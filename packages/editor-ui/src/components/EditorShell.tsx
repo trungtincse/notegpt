@@ -48,7 +48,7 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
   }
 
   const preview = (
-    <div className="notegpt-markdown-content">
+    <div className={`notegpt-markdown-content${mode === "view" ? " notegpt-markdown-content--view" : ""}`}>
       <MarkdownPreview markdown={note.markdown} />
       <AnnotationOverlay
         key={note.id}
@@ -78,7 +78,7 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
           </button>
         </div>
       </header>
-      <div className={`notegpt-split-view${mode === "view" ? " notegpt-split-view--view" : ""}`}>
+      <div className="notegpt-split-view">
         {mode === "edit" && (
           <div className="notegpt-markdown-pane">
             <CodeMirrorEditor docId={note.id} initialValue={note.markdown} editable onChange={updateMarkdown} />

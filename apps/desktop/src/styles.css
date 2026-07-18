@@ -126,6 +126,17 @@ body {
   position: relative;
 }
 
+/* In view mode the reading column is capped for legibility, but — unlike a
+   fixed 50% pane — it shrinks on narrow windows and, more importantly, the
+   ZoomableViewport around it still spans the full pane width, so panning and
+   zooming has the whole window to work with instead of being boxed into a
+   fixed-width column with dead space beside it. */
+.notegpt-markdown-content--view {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
 .notegpt-annotate-pane {
   display: flex;
   flex-direction: column;
@@ -139,16 +150,11 @@ body {
   min-height: 0;
 }
 
-/* View mode has no source pane next to it, so the annotate pane would
-   otherwise stretch to the full shell width — instead size and center it
-   to match a single pane's width from edit mode (50% of the shell). */
-.notegpt-split-view--view {
-  justify-content: center;
-}
-
+/* View mode has no source pane next to it, so let the annotate pane use the
+   full shell width — the reading column itself is capped by
+   .notegpt-markdown-content--view instead, so zoom/pan still gets the whole
+   window rather than being boxed into a half-width pane. */
 .notegpt-annotate-pane--view {
-  flex: 0 0 50%;
-  max-width: 50%;
   border-left: none;
 }
 
