@@ -67,10 +67,34 @@ body {
 .notegpt-editor-shell-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 8px 12px;
   border-bottom: 1px solid #ddd;
   font-size: 13px;
   color: #555;
+}
+
+.notegpt-editor-shell-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.notegpt-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  background: #fff;
+  color: #333;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.notegpt-mode-toggle:hover {
+  background: #f0f0f0;
 }
 
 .notegpt-split-view {
@@ -84,6 +108,22 @@ body {
   flex: 1;
   min-width: 0;
   overflow: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.notegpt-markdown-pane::-webkit-scrollbar {
+  display: none; /* Chromium/Electron — stays scrollable, just no visible track */
+}
+
+/* Auto-height wrapper around the preview + its annotation overlay: giving
+   AnnotationOverlay's `inset: 0` an auto-sized (content-height) containing
+   block instead of the scroll pane's fixed viewport height means it spans
+   the full document, not just the first screenful — so scrolling the pane
+   moves the rendered text and its annotations together as a single surface
+   instead of the overlay running out partway down and drifting apart. */
+.notegpt-markdown-content {
+  position: relative;
 }
 
 .notegpt-annotate-pane {
@@ -97,6 +137,19 @@ body {
 .notegpt-annotate-pane .notegpt-markdown-pane {
   flex: 1;
   min-height: 0;
+}
+
+/* View mode has no source pane next to it, so the annotate pane would
+   otherwise stretch to the full shell width — instead size and center it
+   to match a single pane's width from edit mode (50% of the shell). */
+.notegpt-split-view--view {
+  justify-content: center;
+}
+
+.notegpt-annotate-pane--view {
+  flex: 0 0 50%;
+  max-width: 50%;
+  border-left: none;
 }
 
 .notegpt-codemirror-editor {
@@ -176,8 +229,10 @@ body {
    scrollable pane and so is always in the right place. Excalidraw's own
    toolbar/zoom/help/style-panel chrome is anchored to the edges of the
    annotation overlay rather than the actual viewport, so it drifts over the
-   markdown text as the pane scrolls — hide all of it. */
-.notegpt-annotation-overlay .excalidraw .layer-ui__wrapper {
+   markdown text as the pane scrolls — hide all of it. In view mode there's no
+   editing chrome to worry about (viewModeEnabled already strips it down to
+   just the zoom control), so leave it visible there. */
+.notegpt-annotation-overlay:not(.notegpt-annotation-overlay--view) .excalidraw .layer-ui__wrapper {
   display: none;
 }
 
