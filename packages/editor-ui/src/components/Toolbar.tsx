@@ -9,6 +9,7 @@ import {
   type LucideIcon,
   Pencil,
   Trash2,
+  Type as TextIcon,
   Undo2,
 } from "lucide-react";
 import { useState, type RefObject } from "react";
@@ -34,6 +35,7 @@ const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIco
   { type: "selection", label: "Select", Icon: LassoSelect },
   { type: "hand", label: "Hand", Icon: Hand },
   { type: "freedraw", label: "Pen", Icon: Pencil },
+  { type: "text", label: "Text", Icon: TextIcon },
   { type: "image", label: "Image", Icon: ImageIcon },
   { type: "eraser", label: "Eraser", Icon: Eraser },
 ];
@@ -54,7 +56,12 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
   const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
 
   const selectTool = (type: ToolType) => {
-    excalidrawApiRef.current?.setActiveTool({ type });
+    const api = excalidrawApiRef.current;
+    api?.setActiveTool({ type });
+    // currentItemOpacity is a shared appState value, not scoped to the highlighter tool —
+    // without resetting it here, switching away from the highlighter (which sets it to 40
+    // for its translucent look) would leave every other tool drawing at 40% opacity too.
+    api?.updateScene({ appState: { currentItemOpacity: 100 } });
     setActiveTool(type);
   };
 
