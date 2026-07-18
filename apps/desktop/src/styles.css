@@ -109,9 +109,14 @@ body {
 
 .notegpt-toolbar {
   display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 6px 12px;
-  border-bottom: 1px solid #ddd;
+  width: fit-content;
+  margin: 10px 12px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #26262b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 }
 
 .notegpt-toolbar button {
@@ -121,15 +126,46 @@ body {
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  color: #333;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #d7d7db;
   cursor: pointer;
 }
 
 .notegpt-toolbar button:hover {
-  background: #f1f3f5;
+  background: #3a3a41;
+}
+
+.notegpt-toolbar button.active {
+  background: #7950f2;
+  color: #fff;
+}
+
+.notegpt-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: #40404a;
+}
+
+.notegpt-toolbar-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.notegpt-toolbar-swatch.active {
+  border-color: #fff;
+}
+
+.notegpt-toolbar-slider {
+  width: 110px;
+  margin: 0 6px;
+  accent-color: #7950f2;
 }
 
 .notegpt-annotation-overlay {

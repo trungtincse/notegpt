@@ -1,28 +1,27 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ToolType } from "@excalidraw/excalidraw/types";
 import {
-  ArrowUpRight,
-  Circle,
-  Diamond,
   Eraser,
   Hand,
   Highlighter as HighlighterIcon,
   Image as ImageIcon,
+  LassoSelect,
   type LucideIcon,
-  MousePointer2,
   Pencil,
-  Slash,
-  Square,
-  Type,
+  Trash2,
+  Undo2,
 } from "lucide-react";
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 
 export interface ToolbarProps {
   excalidrawApiRef: RefObject<ExcalidrawImperativeAPI | null>;
 }
 
 const HIGHLIGHT_COLOR = "#ffd43b";
+const DEFAULT_STROKE_COLOR = "#1e1e1e";
 const ICON_SIZE = 18;
+
+const COLOR_SWATCHES = ["#e64980", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
 
 /**
  * Excalidraw's own floating toolbar/zoom/help/style-panel chrome is hidden via
@@ -32,20 +31,33 @@ const ICON_SIZE = 18;
  * toolbar, rendered outside the scrollable pane, replaces it.
  */
 const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIcon }> = [
-  { type: "selection", label: "Select", Icon: MousePointer2 },
+  { type: "selection", label: "Select", Icon: LassoSelect },
   { type: "hand", label: "Hand", Icon: Hand },
   { type: "freedraw", label: "Pen", Icon: Pencil },
-  { type: "rectangle", label: "Rectangle", Icon: Square },
-  { type: "diamond", label: "Diamond", Icon: Diamond },
-  { type: "ellipse", label: "Ellipse", Icon: Circle },
-  { type: "arrow", label: "Arrow", Icon: ArrowUpRight },
-  { type: "line", label: "Line", Icon: Slash },
-  { type: "text", label: "Text", Icon: Type },
   { type: "image", label: "Image", Icon: ImageIcon },
   { type: "eraser", label: "Eraser", Icon: Eraser },
 ];
 
+/** Excalidraw's imperative API has no undo/delete methods, only `history.clear()`
+ * (wipes history) and `resetScene()` (wipes the canvas) — neither is "undo one
+ * step" or "delete selection". Its keyboard shortcuts do both, so we dispatch
+ * synthetic key events at its container to trigger the same internal handlers. */
+function dispatchToExcalidraw(key: string, options: KeyboardEventInit = {}) {
+  const container = document.querySelector<HTMLElement>(".notegpt-annotation-overlay .excalidraw");
+  if (!container) return;
+  container.focus();
+  container.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options }));
+}
+
 export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
+  const [activeTool, setActiveTool] = useState<ToolType | "highlighter">("selection");
+  const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
+
+  const selectTool = (type: ToolType) => {
+    excalidrawApiRef.current?.setActiveTool({ type });
+    setActiveTool(type);
+  };
+
   const activateHighlighter = () => {
     const api = excalidrawApiRef.current;
     if (!api) return;
@@ -58,6 +70,12 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
         currentItemOpacity: 40,
       },
     });
+    setActiveTool("highlighter");
+  };
+
+  const handleColorChange = (color: string) => {
+    setStrokeColor(color);
+    excalidrawApiRef.current?.updateScene({ appState: { currentItemStrokeColor: color } });
   };
 
   return (
@@ -68,13 +86,58 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
           type="button"
           title={label}
           aria-label={label}
-          onClick={() => excalidrawApiRef.current?.setActiveTool({ type })}
+          className={activeTool === type ? "active" : ""}
+          onClick={() => selectTool(type)}
         >
           <Icon size={ICON_SIZE} />
         </button>
       ))}
-      <button type="button" title="Highlighter" aria-label="Highlighter" onClick={activateHighlighter}>
+      <button
+        type="button"
+        title="Highlighter"
+        aria-label="Highlighter"
+        className={activeTool === "highlighter" ? "active" : ""}
+        onClick={activateHighlighter}
+      >
         <HighlighterIcon size={ICON_SIZE} />
+      </button>
+
+      <div className="notegpt-toolbar-divider" />
+
+      {COLOR_SWATCHES.map((color) => (
+        <button
+          key={color}
+          type="button"
+          title={color}
+          aria-label={`Color ${color}`}
+          className={`notegpt-toolbar-swatch${strokeColor === color ? " active" : ""}`}
+          style={{ backgroundColor: color }}
+          onClick={() => handleColorChange(color)}
+        />
+      ))}
+
+      <input
+        className="notegpt-toolbar-slider"
+        type="range"
+        min={1}
+        max={20}
+        defaultValue={2}
+        title="Stroke width"
+        aria-label="Stroke width"
+        onChange={(event) =>
+          excalidrawApiRef.current?.updateScene({
+            appState: { currentItemStrokeWidth: Number(event.target.value) },
+          })
+        }
+      />
+
+      <div className="notegpt-toolbar-divider" />
+
+      <button type="button" title="Undo" aria-label="Undo" onClick={() => dispatchToExcalidraw("z", { ctrlKey: true, metaKey: true })}>
+        <Undo2 size={ICON_SIZE} />
+      </button>
+      <button type="button" title="Delete selected" aria-label="Delete selected" onClick={() => dispatchToExcalidraw("Delete")}>
+        <Trash2 size={ICON_SIZE} />
       </button>
     </div>
   );
