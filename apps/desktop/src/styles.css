@@ -86,8 +86,17 @@ body {
   overflow: auto;
 }
 
-.notegpt-markdown-pane + .notegpt-markdown-pane {
+.notegpt-annotate-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
   border-left: 1px solid #ddd;
+}
+
+.notegpt-annotate-pane .notegpt-markdown-pane {
+  flex: 1;
+  min-height: 0;
 }
 
 .notegpt-codemirror-editor {
@@ -106,31 +115,38 @@ body {
 }
 
 .notegpt-toolbar button {
-  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
+  color: #333;
   cursor: pointer;
+}
+
+.notegpt-toolbar button:hover {
+  background: #f1f3f5;
 }
 
 .notegpt-annotation-overlay {
   z-index: 10;
 }
 
-/* Excalidraw's own toolbar defaults to white (--island-bg-color), which blends
-   into this app's white page background. Give it visible contrast. */
-.notegpt-annotation-overlay .excalidraw {
-  --island-bg-color: #eef1f4;
-  --default-border-color: #ced4da;
+/* The drawing tools live in .notegpt-toolbar instead, which sits outside the
+   scrollable pane and so is always in the right place. Excalidraw's own
+   toolbar/zoom/help/style-panel chrome is anchored to the edges of the
+   annotation overlay rather than the actual viewport, so it drifts over the
+   markdown text as the pane scrolls — hide all of it. */
+.notegpt-annotation-overlay .excalidraw .layer-ui__wrapper {
+  display: none;
 }
 
 .notegpt-markdown-preview {
-  /* Extra padding keeps text clear of Excalidraw's floating chrome, which is
-     always anchored to the edges of the annotation overlay regardless of
-     scroll position: the shape toolbar (top), zoom controls + help button
-     (bottom), and the 200px-wide tool style panel that opens on the left
-     whenever a drawing tool other than selection is active. */
-  padding: 80px 20px 80px 220px;
+  padding: 16px 20px;
   line-height: 1.6;
   overflow-wrap: break-word;
 }

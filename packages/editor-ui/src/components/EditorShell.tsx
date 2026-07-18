@@ -46,14 +46,21 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
         <span>{note.title}</span>
         <span className="notegpt-save-status">{saveStatus}</span>
       </header>
-      <Toolbar excalidrawApiRef={excalidrawApiRef} />
       <div className="notegpt-split-view">
         <div className="notegpt-markdown-pane">
           <CodeMirrorEditor docId={note.id} initialValue={note.markdown} editable onChange={updateMarkdown} />
         </div>
-        <div className="notegpt-markdown-pane">
-          <MarkdownPreview markdown={note.markdown} />
-          <AnnotationOverlay key={note.id} apiRef={excalidrawApiRef} scene={note.annotation} onChange={updateScene} />
+        <div className="notegpt-annotate-pane">
+          <Toolbar excalidrawApiRef={excalidrawApiRef} />
+          <div className="notegpt-markdown-pane">
+            <MarkdownPreview markdown={note.markdown} />
+            <AnnotationOverlay
+              key={note.id}
+              apiRef={excalidrawApiRef}
+              scene={note.annotation}
+              onChange={updateScene}
+            />
+          </div>
         </div>
       </div>
     </div>
