@@ -9,6 +9,7 @@ const mdnoteApi = {
   deleteNote: (filePath) => ipcRenderer.invoke("mdnote:deleteNote", filePath),
   getRecentFiles: () => ipcRenderer.invoke("mdnote:getRecentFiles"),
   addRecentFile: (filePath) => ipcRenderer.invoke("mdnote:addRecentFile", filePath),
+  getLastFolder: () => ipcRenderer.invoke("mdnote:getLastFolder"),
   onMenuOpenFolder: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("mdnote:menu-open-folder", listener);

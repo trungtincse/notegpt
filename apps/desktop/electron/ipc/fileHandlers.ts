@@ -3,6 +3,7 @@ import { dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
 import { addRecentFile, getRecentFiles } from "./recentFiles.js";
+import { getLastFolder, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
 
@@ -43,7 +44,9 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
     if (!win) return null;
     const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
+    const folderPath = result.filePaths[0];
+    await setLastFolder(folderPath);
+    return folderPath;
   });
 
   ipcMain.handle("mdnote:pickMdnoteFile", async () => {
@@ -104,4 +107,6 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
 
   ipcMain.handle("mdnote:getRecentFiles", async (): Promise<string[]> => getRecentFiles());
   ipcMain.handle("mdnote:addRecentFile", async (_event, filePath: string): Promise<void> => addRecentFile(filePath));
+
+  ipcMain.handle("mdnote:getLastFolder", async (): Promise<string | null> => getLastFolder());
 }

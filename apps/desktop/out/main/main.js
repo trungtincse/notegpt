@@ -24,6 +24,27 @@ async function addRecentFile(filePath) {
   const next = [filePath, ...existing.filter((entry) => entry !== filePath)].slice(0, MAX_RECENT);
   await promises.writeFile(recentFilesPath(), JSON.stringify(next, null, 2), "utf-8");
 }
+function settingsPath() {
+  return join(app.getPath("userData"), "settings.json");
+}
+async function readSettings() {
+  try {
+    const raw = await promises.readFile(settingsPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+async function getLastFolder() {
+  const settings = await readSettings();
+  return typeof settings.lastFolder === "string" ? settings.lastFolder : null;
+}
+async function setLastFolder(folderPath) {
+  const settings = await readSettings();
+  settings.lastFolder = folderPath;
+  await promises.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
+}
 const MDNOTE_EXT = ".mdnote";
 function slugify(title) {
   const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -45,7 +66,9 @@ function registerFileHandlers(getWindow) {
     if (!win) return null;
     const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
+    const folderPath = result.filePaths[0];
+    await setLastFolder(folderPath);
+    return folderPath;
   });
   ipcMain.handle("mdnote:pickMdnoteFile", async () => {
     const win = getWindow();
@@ -97,6 +120,7 @@ function registerFileHandlers(getWindow) {
   });
   ipcMain.handle("mdnote:getRecentFiles", async () => getRecentFiles());
   ipcMain.handle("mdnote:addRecentFile", async (_event, filePath) => addRecentFile(filePath));
+  ipcMain.handle("mdnote:getLastFolder", async () => getLastFolder());
 }
 const isDev = !app.isPackaged;
 let mainWindow = null;

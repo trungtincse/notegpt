@@ -18,13 +18,24 @@ export function App() {
 
   const refreshNotes = useCallback(async () => {
     if (!adapter) return;
-    const summaries = await adapter.listNotes();
-    setNotes(summaries.map((s) => ({ filePath: s.id, title: s.title, updatedAt: s.updatedAt })));
+    try {
+      const summaries = await adapter.listNotes();
+      setNotes(summaries.map((s) => ({ filePath: s.id, title: s.title, updatedAt: s.updatedAt })));
+    } catch {
+      // The remembered folder may have been moved or deleted since last launch.
+      setFolderPath(null);
+    }
   }, [adapter]);
 
   useEffect(() => {
     void refreshNotes();
   }, [refreshNotes]);
+
+  useEffect(() => {
+    void window.mdnote.getLastFolder().then((lastFolder) => {
+      if (lastFolder) setFolderPath(lastFolder);
+    });
+  }, []);
 
   const handleOpenFolder = useCallback(async () => {
     const picked = await window.mdnote.pickFolder();
