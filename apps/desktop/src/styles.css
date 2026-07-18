@@ -1,0 +1,165 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.notegpt-app {
+  display: flex;
+  height: 100vh;
+}
+
+.notegpt-sidebar {
+  width: 260px;
+  border-right: 1px solid #ddd;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notegpt-new-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notegpt-new-note-form input {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.notegpt-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notegpt-note-list li {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.notegpt-note-list li.active {
+  background: #e6f0ff;
+}
+
+.notegpt-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.notegpt-editor-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.notegpt-editor-shell-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  font-size: 13px;
+  color: #555;
+}
+
+.notegpt-markdown-pane {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+}
+
+.notegpt-codemirror-editor {
+  height: 100%;
+}
+
+.notegpt-codemirror-editor .cm-editor {
+  height: 100%;
+}
+
+.notegpt-mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.notegpt-mode-toggle button {
+  padding: 4px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.notegpt-mode-toggle button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.notegpt-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.notegpt-toolbar button {
+  padding: 4px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.notegpt-annotation-overlay {
+  z-index: 10;
+}
+
+/* Excalidraw's own toolbar defaults to white (--island-bg-color), which blends
+   into this app's white page background. Give it visible contrast. */
+.notegpt-annotation-overlay .excalidraw {
+  --island-bg-color: #eef1f4;
+  --default-border-color: #ced4da;
+}
+
+.notegpt-markdown-preview {
+  /* Extra top padding keeps the first lines of text clear of Excalidraw's
+     floating toolbar, which is anchored to the top of the annotation overlay. */
+  padding: 80px 20px 16px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.notegpt-markdown-preview h1,
+.notegpt-markdown-preview h2,
+.notegpt-markdown-preview h3 {
+  margin-top: 0.6em;
+  margin-bottom: 0.4em;
+}
+
+.notegpt-markdown-preview p {
+  margin: 0.6em 0;
+}
+
+.notegpt-markdown-preview code {
+  background: #f0f0f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.notegpt-markdown-preview pre code {
+  display: block;
+  padding: 10px;
+  overflow-x: auto;
+}
