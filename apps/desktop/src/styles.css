@@ -73,10 +73,21 @@ body {
   color: #555;
 }
 
+.notegpt-split-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .notegpt-markdown-pane {
   position: relative;
   flex: 1;
+  min-width: 0;
   overflow: auto;
+}
+
+.notegpt-markdown-pane + .notegpt-markdown-pane {
+  border-left: 1px solid #ddd;
 }
 
 .notegpt-codemirror-editor {
@@ -85,25 +96,6 @@ body {
 
 .notegpt-codemirror-editor .cm-editor {
   height: 100%;
-}
-
-.notegpt-mode-toggle {
-  display: flex;
-  gap: 4px;
-}
-
-.notegpt-mode-toggle button {
-  padding: 4px 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.notegpt-mode-toggle button.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
 }
 
 .notegpt-toolbar {
@@ -133,9 +125,12 @@ body {
 }
 
 .notegpt-markdown-preview {
-  /* Extra top padding keeps the first lines of text clear of Excalidraw's
-     floating toolbar, which is anchored to the top of the annotation overlay. */
-  padding: 80px 20px 16px;
+  /* Extra padding keeps text clear of Excalidraw's floating chrome, which is
+     always anchored to the edges of the annotation overlay regardless of
+     scroll position: the shape toolbar (top), zoom controls + help button
+     (bottom), and the 200px-wide tool style panel that opens on the left
+     whenever a drawing tool other than selection is active. */
+  padding: 80px 20px 80px 220px;
   line-height: 1.6;
   overflow-wrap: break-word;
 }

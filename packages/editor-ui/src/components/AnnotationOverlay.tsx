@@ -8,8 +8,6 @@ import { debounce } from "../utils/debounce.js";
 
 export interface AnnotationOverlayProps {
   scene: AnnotationScene;
-  /** true while in "annotate" mode; controls both pointer-events capture and Excalidraw's view mode. */
-  interactive: boolean;
   onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
 }
@@ -38,7 +36,7 @@ function pickPersistedAppState(appState: AppState): Record<string, unknown> {
   return picked;
 }
 
-export function AnnotationOverlay({ scene, interactive, onChange, apiRef: externalApiRef }: AnnotationOverlayProps) {
+export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
@@ -53,13 +51,13 @@ export function AnnotationOverlay({ scene, interactive, onChange, apiRef: extern
   return (
     <div
       className="notegpt-annotation-overlay"
-      style={{ position: "absolute", inset: 0, pointerEvents: interactive ? "auto" : "none" }}
+      style={{ position: "absolute", inset: 0 }}
       // Excalidraw's own wheel handler (attached natively on its container) hijacks
       // wheel/trackpad input to pan its own infinite canvas, which stops the markdown
       // pane underneath from ever scrolling. Stop the event here, in the capture phase,
       // before it reaches Excalidraw's listener — the browser then falls through to its
       // default action (scrolling the nearest scrollable ancestor, the markdown pane).
-      onWheelCapture={interactive ? (event) => event.stopPropagation() : undefined}
+      onWheelCapture={(event) => event.stopPropagation()}
     >
       <Excalidraw
         excalidrawAPI={(api) => {
@@ -72,7 +70,6 @@ export function AnnotationOverlay({ scene, interactive, onChange, apiRef: extern
           appState: { ...(scene.appState as Partial<AppState>), viewBackgroundColor: "transparent" },
           files: scene.files as BinaryFiles,
         }}
-        viewModeEnabled={!interactive}
         onChange={debouncedOnChange}
       />
     </div>

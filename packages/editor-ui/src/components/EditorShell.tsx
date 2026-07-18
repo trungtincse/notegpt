@@ -6,7 +6,6 @@ import { useNoteController } from "../hooks/useNoteController.js";
 import { AnnotationOverlay } from "./AnnotationOverlay.js";
 import { CodeMirrorEditor } from "./CodeMirrorEditor.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
-import { ModeToggle, type EditorMode } from "./ModeToggle.js";
 import { Toolbar } from "./Toolbar.js";
 
 export interface EditorShellProps {
@@ -15,14 +14,13 @@ export interface EditorShellProps {
 }
 
 /**
- * Composition root for the editor: a CodeMirror pane with a fixed-size Excalidraw
- * overlay on top. The mode toggle flips pointer-events on the overlay and the
- * `editable` Compartment on CodeMirror so only one layer captures input at a time.
+ * Composition root for the editor: markdown source on the left, the rendered
+ * preview with an Excalidraw annotation overlay on the right — both always
+ * visible side by side, each pane scrolling independently.
  */
 export function EditorShell({ storage, noteId }: EditorShellProps) {
   const { note, saveStatus, load, updateMarkdown, controller } = useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
-  const [mode, setMode] = useState<EditorMode>("edit");
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // `noteId` is the adapter's opaque address (e.g. a file path), distinct from
@@ -33,7 +31,6 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
 
   useEffect(() => {
     requestedIdRef.current = noteId;
-    setMode("edit");
     void load(noteId).then(() => {
       if (requestedIdRef.current === noteId) setLoadedId(noteId);
     });
@@ -47,28 +44,17 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
     <div className="notegpt-editor-shell">
       <header className="notegpt-editor-shell-header">
         <span>{note.title}</span>
-        <ModeToggle mode={mode} onChange={setMode} />
         <span className="notegpt-save-status">{saveStatus}</span>
       </header>
-      <Toolbar mode={mode} excalidrawApiRef={excalidrawApiRef} />
-      <div className="notegpt-markdown-pane">
-        {/* CodeMirror stays mounted (just hidden) across mode switches so cursor/undo state survives. */}
-        <div style={{ display: mode === "edit" ? "block" : "none", height: "100%" }}>
-          <CodeMirrorEditor
-            docId={note.id}
-            initialValue={note.markdown}
-            editable={mode === "edit"}
-            onChange={updateMarkdown}
-          />
+      <Toolbar excalidrawApiRef={excalidrawApiRef} />
+      <div className="notegpt-split-view">
+        <div className="notegpt-markdown-pane">
+          <CodeMirrorEditor docId={note.id} initialValue={note.markdown} editable onChange={updateMarkdown} />
         </div>
-        {mode === "annotate" && <MarkdownPreview markdown={note.markdown} />}
-        <AnnotationOverlay
-          key={note.id}
-          apiRef={excalidrawApiRef}
-          scene={note.annotation}
-          interactive={mode === "annotate"}
-          onChange={updateScene}
-        />
+        <div className="notegpt-markdown-pane">
+          <MarkdownPreview markdown={note.markdown} />
+          <AnnotationOverlay key={note.id} apiRef={excalidrawApiRef} scene={note.annotation} onChange={updateScene} />
+        </div>
       </div>
     </div>
   );
