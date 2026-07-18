@@ -1,4 +1,4 @@
-import { createBlankNote, deserializeMdNote, serializeMdNote, type Note } from "@notegpt/core";
+import { createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationScene, type Note } from "@notegpt/core";
 import { dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
@@ -10,7 +10,21 @@ const MDNOTE_EXT = ".mdnote";
 export interface NoteFileSummary {
   filePath: string;
   title: string;
+  markdown: string;
+  annotationText: string;
   updatedAt: string;
+}
+
+/** Pulls just the text out of an annotation scene's Excalidraw text elements, for search — not the whole scene, which can carry embedded images. */
+function extractAnnotationText(scene: AnnotationScene): string {
+  return scene.elements
+    .filter((element): element is { type: string; text: string } => {
+      if (typeof element !== "object" || element === null) return false;
+      const candidate = element as { type?: unknown; text?: unknown };
+      return candidate.type === "text" && typeof candidate.text === "string";
+    })
+    .map((element) => element.text)
+    .join(" ");
 }
 
 function slugify(title: string): string {
@@ -70,7 +84,13 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
       try {
         const raw = await fs.readFile(filePath, "utf-8");
         const note = deserializeMdNote(raw);
-        summaries.push({ filePath, title: note.title, updatedAt: note.updatedAt });
+        summaries.push({
+          filePath,
+          title: note.title,
+          markdown: note.markdown,
+          annotationText: extractAnnotationText(note.annotation),
+          updatedAt: note.updatedAt,
+        });
       } catch {
         // skip files that aren't valid .mdnote documents
       }

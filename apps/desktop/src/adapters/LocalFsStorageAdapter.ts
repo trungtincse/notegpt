@@ -12,7 +12,13 @@ export class LocalFsStorageAdapter implements StorageAdapter {
 
   async listNotes(): Promise<NoteSummary[]> {
     const entries = await window.mdnote.listNotesInFolder(this.folderPath);
-    return entries.map((entry) => ({ id: entry.filePath, title: entry.title, updatedAt: entry.updatedAt }));
+    return entries.map((entry) => ({
+      id: entry.filePath,
+      title: entry.title,
+      markdown: entry.markdown,
+      annotationText: entry.annotationText,
+      updatedAt: entry.updatedAt,
+    }));
   }
 
   async loadNote(id: string): Promise<Note> {

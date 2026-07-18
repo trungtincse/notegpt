@@ -46,6 +46,13 @@ async function setLastFolder(folderPath) {
   await promises.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
 }
 const MDNOTE_EXT = ".mdnote";
+function extractAnnotationText(scene) {
+  return scene.elements.filter((element) => {
+    if (typeof element !== "object" || element === null) return false;
+    const candidate = element;
+    return candidate.type === "text" && typeof candidate.text === "string";
+  }).map((element) => element.text).join(" ");
+}
 function slugify(title) {
   const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return slug || "untitled";
@@ -89,7 +96,13 @@ function registerFileHandlers(getWindow) {
       try {
         const raw = await promises.readFile(filePath, "utf-8");
         const note = deserializeMdNote(raw);
-        summaries.push({ filePath, title: note.title, updatedAt: note.updatedAt });
+        summaries.push({
+          filePath,
+          title: note.title,
+          markdown: note.markdown,
+          annotationText: extractAnnotationText(note.annotation),
+          updatedAt: note.updatedAt
+        });
       } catch {
       }
     }

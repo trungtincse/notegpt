@@ -1,11 +1,48 @@
 import { EditorShell } from "@notegpt/editor-ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
 
 interface NoteListEntry {
   filePath: string;
   title: string;
+  markdown: string;
+  annotationText: string;
   updatedAt: string;
+}
+
+interface NoteSearchResult {
+  entry: NoteListEntry;
+  titleMatches: boolean;
+  snippet: string | null;
+}
+
+const SEARCH_DEBOUNCE_MS = 200;
+const SNIPPET_RADIUS = 40;
+
+/** A short excerpt around the first match, so results whose title doesn't match still show *why* they matched. */
+function buildSnippet(text: string, query: string): string | null {
+  const index = text.toLowerCase().indexOf(query);
+  if (index === -1) return null;
+  const start = Math.max(0, index - SNIPPET_RADIUS);
+  const end = Math.min(text.length, index + query.length + SNIPPET_RADIUS);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
+}
+
+/** Wraps every case-insensitive occurrence of `query` in `text` with <mark>, preserving the source text's original casing. */
+function highlightMatches(text: string, query: string): ReactNode {
+  if (!query) return text;
+  const lowerText = text.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let index = lowerText.indexOf(query, cursor);
+  while (index !== -1) {
+    if (index > cursor) parts.push(text.slice(cursor, index));
+    parts.push(<mark key={index}>{text.slice(index, index + query.length)}</mark>);
+    cursor = index + query.length;
+    index = lowerText.indexOf(query, cursor);
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }
 
 export function App() {
@@ -13,6 +50,15 @@ export function App() {
   const [notes, setNotes] = useState<NoteListEntry[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Debounced so fast typing doesn't re-filter/re-render the list on every keystroke;
+  // the input itself stays bound to searchInput so typing never feels laggy.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const adapter = useMemo(() => (folderPath ? new LocalFsStorageAdapter(folderPath) : null), [folderPath]);
 
@@ -20,12 +66,42 @@ export function App() {
     if (!adapter) return;
     try {
       const summaries = await adapter.listNotes();
-      setNotes(summaries.map((s) => ({ filePath: s.id, title: s.title, updatedAt: s.updatedAt })));
+      setNotes(
+        // `?? ""` guards against a stale main-process build (electron/ipc/fileHandlers.ts
+        // changes require a full app restart, not just a renderer reload) still returning
+        // summaries without markdown/annotationText — otherwise `.toLowerCase()` below on
+        // `undefined` throws during render and blanks the whole window.
+        summaries.map((s) => ({
+          filePath: s.id,
+          title: s.title,
+          markdown: s.markdown ?? "",
+          annotationText: s.annotationText ?? "",
+          updatedAt: s.updatedAt,
+        }))
+      );
     } catch {
       // The remembered folder may have been moved or deleted since last launch.
       setFolderPath(null);
     }
   }, [adapter]);
+
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+
+  const searchResults = useMemo((): NoteSearchResult[] => {
+    if (!trimmedQuery) return notes.map((entry) => ({ entry, titleMatches: false, snippet: null }));
+    return notes
+      .filter(
+        (n) =>
+          n.title.toLowerCase().includes(trimmedQuery) ||
+          n.markdown.toLowerCase().includes(trimmedQuery) ||
+          n.annotationText.toLowerCase().includes(trimmedQuery)
+      )
+      .map((entry) => {
+        const titleMatches = entry.title.toLowerCase().includes(trimmedQuery);
+        const snippet = titleMatches ? null : (buildSnippet(entry.markdown, trimmedQuery) ?? buildSnippet(entry.annotationText, trimmedQuery));
+        return { entry, titleMatches, snippet };
+      });
+  }, [notes, trimmedQuery]);
 
   useEffect(() => {
     void refreshNotes();
@@ -84,16 +160,30 @@ export function App() {
             New Note
           </button>
         </div>
+        <input
+          type="search"
+          className="notegpt-note-search"
+          placeholder="Search notes…"
+          value={searchInput}
+          disabled={!adapter}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
         <ul className="notegpt-note-list">
-          {notes.map((n) => (
+          {searchResults.map(({ entry, titleMatches, snippet }) => (
             <li
-              key={n.filePath}
-              className={n.filePath === selectedFilePath ? "active" : ""}
-              onClick={() => setSelectedFilePath(n.filePath)}
+              key={entry.filePath}
+              className={entry.filePath === selectedFilePath ? "active" : ""}
+              onClick={() => setSelectedFilePath(entry.filePath)}
             >
-              {n.title}
+              <div className="notegpt-note-list-title">
+                {titleMatches ? highlightMatches(entry.title, trimmedQuery) : entry.title}
+              </div>
+              {snippet && <div className="notegpt-note-list-snippet">{highlightMatches(snippet, trimmedQuery)}</div>}
             </li>
           ))}
+          {adapter && searchResults.length === 0 && (
+            <li className="notegpt-note-list-empty">{trimmedQuery ? "No notes match your search." : "No notes yet."}</li>
+          )}
         </ul>
       </aside>
       <main className="notegpt-main">
