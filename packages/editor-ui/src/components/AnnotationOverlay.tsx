@@ -54,6 +54,12 @@ export function AnnotationOverlay({ scene, interactive, onChange, apiRef: extern
     <div
       className="notegpt-annotation-overlay"
       style={{ position: "absolute", inset: 0, pointerEvents: interactive ? "auto" : "none" }}
+      // Excalidraw's own wheel handler (attached natively on its container) hijacks
+      // wheel/trackpad input to pan its own infinite canvas, which stops the markdown
+      // pane underneath from ever scrolling. Stop the event here, in the capture phase,
+      // before it reaches Excalidraw's listener — the browser then falls through to its
+      // default action (scrolling the nearest scrollable ancestor, the markdown pane).
+      onWheelCapture={interactive ? (event) => event.stopPropagation() : undefined}
     >
       <Excalidraw
         excalidrawAPI={(api) => {
