@@ -10,7 +10,7 @@ export interface AnnotationOverlayProps {
   scene: AnnotationScene;
   onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
-  /** Read-only: disables editing and lets Excalidraw's native wheel/pinch pan+zoom through instead of ceding scroll to the markdown pane. */
+  /** Read-only: disables editing. Pan/zoom in this mode is driven externally (see ZoomableViewport), not by Excalidraw itself. */
   viewMode?: boolean;
 }
 
@@ -52,20 +52,21 @@ export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef, vie
 
   return (
     <div
-      className={`notegpt-annotation-overlay${viewMode ? " notegpt-annotation-overlay--view" : ""}`}
-      style={{ position: "absolute", inset: 0 }}
+      className="notegpt-annotation-overlay"
+      // In view mode Excalidraw must not receive any pointer input at all — it has its
+      // own drag-to-pan behavior which would move only the annotation canvas, not the
+      // markdown text underneath, the moment a stray mousedown/drag reached it. Making
+      // it pointer-events: none hands *all* mouse/touch interaction to ZoomableViewport
+      // (an ancestor), which pans/zooms both layers together as one surface instead.
+      style={{ position: "absolute", inset: 0, pointerEvents: viewMode ? "none" : "auto" }}
       // Excalidraw's own wheel handler (attached natively on its container) hijacks
-      // wheel/trackpad input to pan its own infinite canvas, which stops the markdown
-      // pane underneath from ever scrolling. Stop the event here, in the capture phase,
-      // before it reaches Excalidraw's listener — the browser then falls through to its
-      // default action (scrolling the nearest scrollable ancestor, the markdown pane), so
-      // the text and the annotations drawn on top of it scroll together as one surface.
-      // The one exception is ctrl+wheel/pinch in view mode: that's Excalidraw's zoom
-      // gesture, not a pan, so it's let through to reach Excalidraw's own listener.
-      onWheelCapture={(event) => {
-        if (viewMode && event.ctrlKey) return;
-        event.stopPropagation();
-      }}
+      // wheel/trackpad input to pan+zoom its own infinite canvas. In edit mode that
+      // stops the markdown pane underneath from ever scrolling, so it's stopped here,
+      // in the capture phase, before it reaches Excalidraw's listener — the browser
+      // then falls through to its default action (scrolling the markdown pane). In view
+      // mode, pointer-events: none above already keeps wheel events from ever reaching
+      // Excalidraw in the first place, so this handler is edit-mode-only in practice.
+      onWheelCapture={(event) => event.stopPropagation()}
     >
       <Excalidraw
         excalidrawAPI={(api) => {

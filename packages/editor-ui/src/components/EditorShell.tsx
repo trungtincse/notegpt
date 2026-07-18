@@ -8,6 +8,7 @@ import { AnnotationOverlay } from "./AnnotationOverlay.js";
 import { CodeMirrorEditor } from "./CodeMirrorEditor.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import { Toolbar } from "./Toolbar.js";
+import { ZoomableViewport } from "./ZoomableViewport.js";
 
 export interface EditorShellProps {
   storage: StorageAdapter;
@@ -20,8 +21,8 @@ type ShellMode = "edit" | "view";
  * Composition root for the editor. In edit mode: markdown source on the left,
  * the rendered preview with an editable Excalidraw annotation overlay on the
  * right, both scrolling independently. In view mode: only the rendered
- * preview and its annotations, read-only and zoomable via Excalidraw's own
- * pan/zoom. A header button switches between the two.
+ * preview and its annotations, read-only and pannable/zoomable as one flat
+ * surface via ZoomableViewport. A header button switches between the two.
  */
 export function EditorShell({ storage, noteId }: EditorShellProps) {
   const { note, saveStatus, load, updateMarkdown, controller } = useNoteController(storage);
@@ -45,6 +46,19 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
   if (!note || loadedId !== noteId) {
     return <div className="notegpt-editor-shell-loading">Loading…</div>;
   }
+
+  const preview = (
+    <div className="notegpt-markdown-content">
+      <MarkdownPreview markdown={note.markdown} />
+      <AnnotationOverlay
+        key={note.id}
+        apiRef={excalidrawApiRef}
+        scene={note.annotation}
+        onChange={updateScene}
+        viewMode={mode === "view"}
+      />
+    </div>
+  );
 
   return (
     <div className="notegpt-editor-shell">
@@ -73,16 +87,7 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
         <div className={`notegpt-annotate-pane${mode === "view" ? " notegpt-annotate-pane--view" : ""}`}>
           {mode === "edit" && <Toolbar excalidrawApiRef={excalidrawApiRef} />}
           <div className="notegpt-markdown-pane">
-            <div className="notegpt-markdown-content">
-              <MarkdownPreview markdown={note.markdown} />
-              <AnnotationOverlay
-                key={note.id}
-                apiRef={excalidrawApiRef}
-                scene={note.annotation}
-                onChange={updateScene}
-                viewMode={mode === "view"}
-              />
-            </div>
+            {mode === "view" ? <ZoomableViewport key={note.id}>{preview}</ZoomableViewport> : preview}
           </div>
         </div>
       </div>

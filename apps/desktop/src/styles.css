@@ -229,11 +229,63 @@ body {
    scrollable pane and so is always in the right place. Excalidraw's own
    toolbar/zoom/help/style-panel chrome is anchored to the edges of the
    annotation overlay rather than the actual viewport, so it drifts over the
-   markdown text as the pane scrolls — hide all of it. In view mode there's no
-   editing chrome to worry about (viewModeEnabled already strips it down to
-   just the zoom control), so leave it visible there. */
-.notegpt-annotation-overlay:not(.notegpt-annotation-overlay--view) .excalidraw .layer-ui__wrapper {
+   markdown text as the pane scrolls — hide all of it. In view mode, its zoom
+   control would only zoom the annotation canvas (not the markdown text under
+   it), so it stays hidden there too — ZoomableViewport's own controls zoom
+   both together instead. */
+.notegpt-annotation-overlay .excalidraw .layer-ui__wrapper {
   display: none;
+}
+
+.notegpt-zoom-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+
+.notegpt-zoom-viewport--dragging {
+  cursor: grabbing;
+}
+
+.notegpt-zoom-surface {
+  transform-origin: 0 0;
+  user-select: none;
+}
+
+.notegpt-zoom-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #26262b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.notegpt-zoom-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #d7d7db;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.notegpt-zoom-controls button:hover {
+  background: #3a3a41;
 }
 
 .notegpt-markdown-preview {
