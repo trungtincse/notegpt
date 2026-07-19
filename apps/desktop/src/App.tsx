@@ -1,5 +1,5 @@
 import { EditorShell } from "@notegpt/editor-ui";
-import { ChevronDown, MoreHorizontal, Pin, PinOff } from "lucide-react";
+import { ChevronDown, FolderOpen, MoreHorizontal, Pin, PinOff, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
 
@@ -367,7 +367,10 @@ export function App() {
   return (
     <div className="notegpt-app">
       <aside className="notegpt-sidebar">
-        <button onClick={() => void handleOpenFolder()}>Open Folder…</button>
+        <button className="notegpt-open-folder-btn" onClick={() => void handleOpenFolder()}>
+          <FolderOpen size={16} />
+          Open Folder…
+        </button>
         <div className="notegpt-new-note-form">
           <input
             type="text"
@@ -379,8 +382,8 @@ export function App() {
               if (e.key === "Enter") void handleNewNote();
             }}
           />
-          <button onClick={() => void handleNewNote()} disabled={!adapter}>
-            New Note
+          <button onClick={() => void handleNewNote()} disabled={!adapter} title="New Note" aria-label="New Note">
+            <Plus size={16} />
           </button>
         </div>
         <input

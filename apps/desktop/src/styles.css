@@ -4,7 +4,7 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
 }
 
 .notegpt-app {
@@ -22,16 +22,65 @@ body {
   gap: 8px;
 }
 
+.notegpt-open-folder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f7f7f8;
+  color: #1e1e1e;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.notegpt-open-folder-btn:hover {
+  background: #efeff0;
+  border-color: #bbb;
+}
+
+.notegpt-open-folder-btn:active {
+  background: #e6e6e7;
+}
+
 .notegpt-new-note-form {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: stretch;
 }
 
 .notegpt-new-note-form input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 6px 8px;
   border: 1px solid #ccc;
-  border-radius: 4px;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+}
+
+.notegpt-new-note-form button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 0 4px 4px 0;
+  background: #fff;
+  cursor: pointer;
+}
+
+.notegpt-new-note-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .notegpt-note-search {

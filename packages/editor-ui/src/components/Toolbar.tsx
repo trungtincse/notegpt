@@ -1,3 +1,4 @@
+import { FONT_FAMILY } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ToolType } from "@excalidraw/excalidraw/types";
 import {
@@ -61,7 +62,9 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
     // currentItemOpacity is a shared appState value, not scoped to the highlighter tool —
     // without resetting it here, switching away from the highlighter (which sets it to 40
     // for its translucent look) would leave every other tool drawing at 40% opacity too.
-    api?.updateScene({ appState: { currentItemOpacity: 100 } });
+    // currentItemFontFamily defaults to Excalidraw's hand-drawn "Virgil" font — Helvetica
+    // reads as normal text instead, matching the rest of the app's UI font.
+    api?.updateScene({ appState: { currentItemOpacity: 100, currentItemFontFamily: FONT_FAMILY.Helvetica } });
     setActiveTool(type);
   };
 
