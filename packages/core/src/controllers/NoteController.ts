@@ -90,6 +90,15 @@ export class NoteController {
     }
   }
 
+  /** Cancels any pending autosave. Call on unmount — an armed timer left running past
+   * this controller's lifetime would still fire and persist its stale in-memory note. */
+  dispose(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+  }
+
   private setState(next: NoteControllerState): void {
     this.state = next;
     for (const listener of this.listeners) listener(this.state);

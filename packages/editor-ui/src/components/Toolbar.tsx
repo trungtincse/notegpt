@@ -22,7 +22,7 @@ const HIGHLIGHT_COLOR = "#ffd43b";
 const DEFAULT_STROKE_COLOR = "#1e1e1e";
 const ICON_SIZE = 18;
 
-const COLOR_SWATCHES = ["#e64980", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
+const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
 
 /**
  * Excalidraw's own floating toolbar/zoom/help/style-panel chrome is hidden via

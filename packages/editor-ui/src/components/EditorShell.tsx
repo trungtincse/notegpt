@@ -1,6 +1,6 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { StorageAdapter } from "@notegpt/core";
-import { Eye, Pencil } from "lucide-react";
+import { Code2, Eye, PenLine } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAnnotationController } from "../hooks/useAnnotationController.js";
 import { useNoteController } from "../hooks/useNoteController.js";
@@ -15,20 +15,20 @@ export interface EditorShellProps {
   noteId: string;
 }
 
-type ShellMode = "edit" | "view";
+type ShellMode = "markdown" | "annotation" | "view";
 
 /**
- * Composition root for the editor. In edit mode: markdown source on the left,
- * the rendered preview with an editable Excalidraw annotation overlay on the
- * right, both scrolling independently. In view mode: only the rendered
- * preview and its annotations, read-only and pannable/zoomable as one flat
- * surface via ZoomableViewport. A header button switches between the two.
+ * Composition root for the editor, split into three independent sections
+ * shown one at a time: the raw markdown source, an editable Excalidraw
+ * annotation overlay atop the rendered preview, and a read-only preview
+ * that's pannable/zoomable as one flat surface via ZoomableViewport. A
+ * header switcher moves between the three.
  */
 export function EditorShell({ storage, noteId }: EditorShellProps) {
   const { note, saveStatus, load, updateMarkdown, controller } = useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
-  const [mode, setMode] = useState<ShellMode>("edit");
+  const [mode, setMode] = useState<ShellMode>("markdown");
 
   // `noteId` is the adapter's opaque address (e.g. a file path), distinct from
   // `note.id` (the note's own stable content identity) — track load completion
@@ -48,8 +48,14 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
   }
 
   const preview = (
-    <div className={`notegpt-markdown-content${mode === "view" ? " notegpt-markdown-content--view" : ""}`}>
-      <MarkdownPreview markdown={note.markdown} />
+    // The text column is capped/centered via the inner wrapper for legibility, but
+    // AnnotationOverlay is a direct child of the full-width outer div — its `inset: 0`
+    // resolves against that, not the capped column — so the drawing canvas spans the
+    // whole pane and leaves room to annotate in the margins beside the text.
+    <div className="notegpt-markdown-content">
+      <div className="notegpt-markdown-content-inner">
+        <MarkdownPreview markdown={note.markdown} />
+      </div>
       <AnnotationOverlay
         key={note.id}
         apiRef={excalidrawApiRef}
@@ -66,30 +72,59 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
         <span>{note.title}</span>
         <div className="notegpt-editor-shell-header-actions">
           <span className="notegpt-save-status">{saveStatus}</span>
-          <button
-            type="button"
-            className="notegpt-mode-toggle"
-            title={mode === "edit" ? "Switch to view mode" : "Switch to edit mode"}
-            aria-label={mode === "edit" ? "Switch to view mode" : "Switch to edit mode"}
-            onClick={() => setMode((current) => (current === "edit" ? "view" : "edit"))}
-          >
-            {mode === "edit" ? <Eye size={16} /> : <Pencil size={16} />}
-            {mode === "edit" ? "View" : "Edit"}
-          </button>
+          <div className="notegpt-mode-switcher" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "markdown"}
+              className={`notegpt-mode-switcher-btn${mode === "markdown" ? " active" : ""}`}
+              onClick={() => setMode("markdown")}
+            >
+              <Code2 size={16} />
+              Markdown
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "annotation"}
+              className={`notegpt-mode-switcher-btn${mode === "annotation" ? " active" : ""}`}
+              onClick={() => setMode("annotation")}
+            >
+              <PenLine size={16} />
+              Annotation
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "view"}
+              className={`notegpt-mode-switcher-btn${mode === "view" ? " active" : ""}`}
+              onClick={() => setMode("view")}
+            >
+              <Eye size={16} />
+              View
+            </button>
+          </div>
         </div>
       </header>
       <div className="notegpt-split-view">
-        {mode === "edit" && (
+        {mode === "markdown" && (
           <div className="notegpt-markdown-pane">
             <CodeMirrorEditor docId={note.id} initialValue={note.markdown} editable onChange={updateMarkdown} />
           </div>
         )}
-        <div className={`notegpt-annotate-pane${mode === "view" ? " notegpt-annotate-pane--view" : ""}`}>
-          {mode === "edit" && <Toolbar excalidrawApiRef={excalidrawApiRef} />}
-          <div className="notegpt-markdown-pane">
-            {mode === "view" ? <ZoomableViewport key={note.id}>{preview}</ZoomableViewport> : preview}
+        {mode === "annotation" && (
+          <div className="notegpt-annotate-pane">
+            <Toolbar excalidrawApiRef={excalidrawApiRef} />
+            <div className="notegpt-markdown-pane">{preview}</div>
           </div>
-        </div>
+        )}
+        {mode === "view" && (
+          <div className="notegpt-annotate-pane">
+            <div className="notegpt-markdown-pane">
+              <ZoomableViewport key={note.id}>{preview}</ZoomableViewport>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

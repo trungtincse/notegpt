@@ -1,11 +1,150 @@
 import { join, extname } from "node:path";
-import { app, ipcMain, dialog, BrowserWindow, Menu } from "electron";
+import { ipcMain, dialog, screen, BrowserWindow, app, Menu } from "electron";
 import { deserializeMdNote, serializeMdNote, createBlankNote } from "@notegpt/core";
 import { promises } from "node:fs";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 const require2 = __cjs_mod__.createRequire(import.meta.url);
+const PRINT_READY_TIMEOUT_MS = 5e3;
+const SIDEBAR_WIDTH = 260;
+const TEXT_COLUMN_WIDTH = 900;
+const FALLBACK_PRINT_SIZE = { width: 1200 - SIDEBAR_WIDTH, height: 800 };
+const CSS_PX_PER_INCH = 96;
+const PAGE_HEIGHT_INCHES = 11.69;
+function hasMarginAnnotation(note, fallbackWidth) {
+  const annotation = note.annotation;
+  const referenceWidth = FALLBACK_PRINT_SIZE.width;
+  const appState = annotation.appState ?? {};
+  const scrollX = typeof appState.scrollX === "number" ? appState.scrollX : 0;
+  const zoom = typeof appState.zoom?.value === "number" ? appState.zoom.value : 1;
+  const marginLeft = Math.max(0, (referenceWidth - TEXT_COLUMN_WIDTH) / 2);
+  const columnRight = marginLeft + Math.min(TEXT_COLUMN_WIDTH, referenceWidth);
+  const CLEARANCE = 1;
+  const elements = annotation.elements ?? [];
+  return elements.some((el) => {
+    if (el.isDeleted) return false;
+    const x = typeof el.x === "number" ? el.x : 0;
+    const width = typeof el.width === "number" ? el.width : 0;
+    const screenMinX = (x - scrollX) * zoom;
+    const screenMaxX = (x + width - scrollX) * zoom;
+    return screenMinX < marginLeft - CLEARANCE || screenMaxX > columnRight + CLEARANCE;
+  });
+}
+function buildPrintUrl(folderPath, filePath, options) {
+  const query = { print: "1", folder: folderPath, file: filePath };
+  if (options.isDev && options.rendererDevUrl) {
+    const url = new URL(options.rendererDevUrl);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+    return { devUrl: url.toString() };
+  }
+  return { query };
+}
+function waitForPrintReady() {
+  return new Promise((resolve) => {
+    let settled = false;
+    const onReady = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeListener("mdnote:print-ready", onReady);
+      resolve();
+    }, PRINT_READY_TIMEOUT_MS);
+    ipcMain.once("mdnote:print-ready", onReady);
+  });
+}
+function registerExportHandlers(getWindow, options) {
+  let exportInFlight = false;
+  ipcMain.handle(
+    "mdnote:exportNotePdf",
+    async (_event, folderPath, filePath, suggestedTitle) => {
+      if (exportInFlight) return null;
+      exportInFlight = true;
+      let printWin = null;
+      try {
+        const win = getWindow();
+        const saveDialogOptions = {
+          defaultPath: `${suggestedTitle}.pdf`,
+          filters: [{ name: "PDF", extensions: ["pdf"] }]
+        };
+        const saveResult = win ? await dialog.showSaveDialog(win, saveDialogOptions) : await dialog.showSaveDialog(saveDialogOptions);
+        if (saveResult.canceled || !saveResult.filePath) return null;
+        const [, mainHeight] = win?.getContentSize() ?? [FALLBACK_PRINT_SIZE.width + SIDEBAR_WIDTH, FALLBACK_PRINT_SIZE.height];
+        const note = deserializeMdNote(await promises.readFile(filePath, "utf-8"));
+        const fullScreenWidth = screen.getPrimaryDisplay().workAreaSize.width - SIDEBAR_WIDTH;
+        const printWidth = hasMarginAnnotation(note, fullScreenWidth) ? fullScreenWidth : TEXT_COLUMN_WIDTH;
+        printWin = new BrowserWindow({
+          show: false,
+          width: printWidth,
+          height: mainHeight,
+          webPreferences: {
+            preload: options.preloadPath,
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+            // Excalidraw's canvas paints via requestAnimationFrame, which Chromium
+            // throttles for backgrounded windows — a window that's never shown risks
+            // never getting past its first paint without this.
+            backgroundThrottling: false
+          }
+        });
+        const { devUrl, query } = buildPrintUrl(folderPath, filePath, options);
+        if (devUrl) {
+          await printWin.loadURL(devUrl);
+        } else {
+          await printWin.loadFile(options.rendererIndexPath, { query });
+        }
+        await waitForPrintReady();
+        const pdfBuffer = await printWin.webContents.printToPDF({
+          printBackground: true,
+          pageSize: { width: printWidth / CSS_PX_PER_INCH, height: PAGE_HEIGHT_INCHES },
+          margins: { top: 0.4, bottom: 0.4, left: 0, right: 0 }
+        });
+        await promises.writeFile(saveResult.filePath, pdfBuffer);
+        return saveResult.filePath;
+      } finally {
+        printWin?.destroy();
+        exportInFlight = false;
+      }
+    }
+  );
+}
+function pinnedNotesPath() {
+  return join(app.getPath("userData"), "pinned-notes.json");
+}
+async function getPinnedFiles() {
+  try {
+    const raw = await promises.readFile(pinnedNotesPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+async function togglePinnedFile(filePath) {
+  const existing = await getPinnedFiles();
+  const next = existing.includes(filePath) ? existing.filter((entry) => entry !== filePath) : [filePath, ...existing];
+  await promises.writeFile(pinnedNotesPath(), JSON.stringify(next, null, 2), "utf-8");
+  return next;
+}
+async function removePinnedFile(filePath) {
+  const existing = await getPinnedFiles();
+  if (!existing.includes(filePath)) return;
+  await promises.writeFile(
+    pinnedNotesPath(),
+    JSON.stringify(
+      existing.filter((entry) => entry !== filePath),
+      null,
+      2
+    ),
+    "utf-8"
+  );
+}
 const MAX_RECENT = 10;
 function recentFilesPath() {
   return join(app.getPath("userData"), "recent-files.json");
@@ -23,6 +162,19 @@ async function addRecentFile(filePath) {
   const existing = await getRecentFiles();
   const next = [filePath, ...existing.filter((entry) => entry !== filePath)].slice(0, MAX_RECENT);
   await promises.writeFile(recentFilesPath(), JSON.stringify(next, null, 2), "utf-8");
+}
+async function removeRecentFile(filePath) {
+  const existing = await getRecentFiles();
+  if (!existing.includes(filePath)) return;
+  await promises.writeFile(
+    recentFilesPath(),
+    JSON.stringify(
+      existing.filter((entry) => entry !== filePath),
+      null,
+      2
+    ),
+    "utf-8"
+  );
 }
 function settingsPath() {
   return join(app.getPath("userData"), "settings.json");
@@ -130,24 +282,37 @@ function registerFileHandlers(getWindow) {
   );
   ipcMain.handle("mdnote:deleteNote", async (_event, filePath) => {
     await promises.unlink(filePath);
+    await removeRecentFile(filePath);
+    await removePinnedFile(filePath);
   });
   ipcMain.handle("mdnote:getRecentFiles", async () => getRecentFiles());
   ipcMain.handle("mdnote:addRecentFile", async (_event, filePath) => addRecentFile(filePath));
+  ipcMain.handle("mdnote:getPinnedFiles", async () => getPinnedFiles());
+  ipcMain.handle("mdnote:togglePinnedFile", async (_event, filePath) => togglePinnedFile(filePath));
   ipcMain.handle("mdnote:getLastFolder", async () => getLastFolder());
 }
 const isDev = !app.isPackaged;
+const preloadPath = join(__dirname, "../preload/preload.mjs");
+const rendererIndexPath = join(__dirname, "../renderer/index.html");
+const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 let mainWindow = null;
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: join(__dirname, "../preload/preload.mjs"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       // Electron's sandboxed preload loader can't run ESM `import` (our preload
       // bundle is .mjs); contextIsolation remains the real security boundary.
       sandbox: false
+    }
+  });
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type === "keyDown" && input.key === "F12") {
+      mainWindow?.webContents.toggleDevTools();
+      event.preventDefault();
     }
   });
   mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
@@ -159,10 +324,10 @@ function createWindow() {
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     console.log(`[render-process-gone] ${JSON.stringify(details)}`);
   });
-  if (isDev && process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  if (isDev && rendererDevUrl) {
+    void mainWindow.loadURL(rendererDevUrl);
   } else {
-    void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    void mainWindow.loadFile(rendererIndexPath);
   }
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -186,6 +351,7 @@ function buildMenu() {
 }
 app.whenReady().then(() => {
   registerFileHandlers(() => mainWindow);
+  registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();
   createWindow();
   app.on("activate", () => {

@@ -40,6 +40,39 @@ body {
   border-radius: 4px;
 }
 
+.notegpt-note-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notegpt-note-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.notegpt-note-section-header:hover {
+  color: #555;
+}
+
+.notegpt-note-section-header-icon {
+  transition: transform 0.15s ease;
+}
+
+.notegpt-note-section-header.collapsed .notegpt-note-section-header-icon {
+  transform: rotate(-90deg);
+}
+
 .notegpt-note-list {
   list-style: none;
   margin: 0;
@@ -56,6 +89,10 @@ body {
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.notegpt-note-list li:hover {
+  background: #f0f0f0;
 }
 
 .notegpt-note-list li.active {
@@ -79,24 +116,89 @@ body {
   white-space: nowrap;
 }
 
-.notegpt-note-delete {
+.notegpt-note-list-actions {
+  position: relative;
   flex-shrink: 0;
-  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  visibility: hidden;
+}
+
+.notegpt-note-list li:hover .notegpt-note-list-actions {
+  visibility: visible;
+}
+
+.notegpt-note-pin-btn.pinned {
+  visibility: visible;
+}
+
+.notegpt-note-pin-btn,
+.notegpt-note-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: #999;
   cursor: pointer;
-  visibility: hidden;
 }
 
-.notegpt-note-list li:hover .notegpt-note-delete {
-  visibility: visible;
+.notegpt-note-pin-btn:hover,
+.notegpt-note-more-btn:hover {
+  background: #e6e6e6;
+  color: #333;
 }
 
-.notegpt-note-delete:hover {
+.notegpt-note-pin-btn.pinned {
+  color: #7950f2;
+}
+
+.notegpt-note-more-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  cursor: default;
+}
+
+.notegpt-note-more-menu-item {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #333;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notegpt-note-more-menu-item:hover {
+  background: #f0f0f0;
+}
+
+.notegpt-note-more-menu-item.danger:hover {
   background: #fde2e2;
   color: #c0392b;
+}
+
+.notegpt-note-rename-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid #7950f2;
+  border-radius: 4px;
+  font: inherit;
 }
 
 .notegpt-note-list-snippet {
@@ -142,21 +244,36 @@ body {
   gap: 12px;
 }
 
-.notegpt-mode-toggle {
+.notegpt-mode-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.notegpt-mode-switcher-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border: 1px solid #ccc;
+  border: none;
   border-radius: 999px;
-  background: #fff;
+  background: transparent;
   color: #333;
   font-size: 13px;
   cursor: pointer;
 }
 
-.notegpt-mode-toggle:hover {
+.notegpt-mode-switcher-btn:hover {
   background: #f0f0f0;
+}
+
+.notegpt-mode-switcher-btn.active {
+  background: #333;
+  color: #fff;
 }
 
 .notegpt-split-view {
@@ -188,12 +305,13 @@ body {
   position: relative;
 }
 
-/* In view mode the reading column is capped for legibility, but — unlike a
-   fixed 50% pane — it shrinks on narrow windows and, more importantly, the
-   ZoomableViewport around it still spans the full pane width, so panning and
-   zooming has the whole window to work with instead of being boxed into a
-   fixed-width column with dead space beside it. */
-.notegpt-markdown-content--view {
+/* The reading column is capped for legibility, but this only wraps the text —
+   AnnotationOverlay is a sibling, not a child, so its full-pane-width `inset: 0`
+   isn't shrunk to match, leaving open margin on both sides to draw in. Unlike a
+   fixed 50% pane it shrinks on narrow windows, and in view mode the
+   ZoomableViewport around the whole thing still spans the full pane width, so
+   panning and zooming has the whole window to work with. */
+.notegpt-markdown-content-inner {
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
@@ -204,20 +322,11 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  border-left: 1px solid #ddd;
 }
 
 .notegpt-annotate-pane .notegpt-markdown-pane {
   flex: 1;
   min-height: 0;
-}
-
-/* View mode has no source pane next to it, so let the annotate pane use the
-   full shell width — the reading column itself is capped by
-   .notegpt-markdown-content--view instead, so zoom/pan still gets the whole
-   window rather than being boxed into a half-width pane. */
-.notegpt-annotate-pane--view {
-  border-left: none;
 }
 
 .notegpt-codemirror-editor {
@@ -231,12 +340,13 @@ body {
 .notegpt-toolbar {
   display: flex;
   align-items: center;
+  align-self: center;
   gap: 4px;
   width: fit-content;
   margin: 10px 12px;
   padding: 6px 8px;
   border-radius: 999px;
-  background: #26262b;
+  background: #3c3c41;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 }
 
@@ -384,4 +494,17 @@ body {
   display: block;
   padding: 10px;
   overflow-x: auto;
+}
+
+/* PrintView's own wrapper: deliberately no fixed height / overflow, unlike
+   .notegpt-markdown-pane — Chromium's print pagination needs the document's
+   natural height to paginate across multiple PDF pages instead of clipping
+   to one screenful. */
+.notegpt-print-page {
+  position: relative;
+}
+
+.notegpt-print-title {
+  margin: 0;
+  padding: 16px 20px 0;
 }

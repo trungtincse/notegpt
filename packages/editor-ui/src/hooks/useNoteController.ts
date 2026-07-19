@@ -5,7 +5,13 @@ export function useNoteController(storage: StorageAdapter) {
   const controller = useMemo(() => new NoteController(storage), [storage]);
   const [state, setState] = useState<NoteControllerState>(() => controller.getState());
 
-  useEffect(() => controller.subscribe(setState), [controller]);
+  useEffect(() => {
+    const unsubscribe = controller.subscribe(setState);
+    return () => {
+      unsubscribe();
+      controller.dispose();
+    };
+  }, [controller]);
 
   return {
     controller,

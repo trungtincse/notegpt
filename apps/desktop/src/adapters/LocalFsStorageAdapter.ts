@@ -50,6 +50,13 @@ export class LocalFsStorageAdapter implements StorageAdapter {
     return this.filePathByNoteId.get(noteId);
   }
 
+  /** Desktop-only escape hatch: renames a note by changing its stored title only — the
+   * filename on disk (and thus this adapter's `id` for it) is left untouched. */
+  async renameNote(filePath: string, title: string): Promise<void> {
+    const note = await window.mdnote.readNote(filePath);
+    await window.mdnote.writeNote(filePath, { ...note, title, updatedAt: new Date().toISOString() });
+  }
+
   async resolveAssetsForRead(scene: AnnotationScene): Promise<AnnotationScene> {
     return scene; // assets are already inline dataURLs on disk
   }

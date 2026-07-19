@@ -125,6 +125,10 @@ export function ZoomableViewport({ children, minScale = DEFAULT_MIN_SCALE, maxSc
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
+      // Capturing the pointer here redirects its later click event to this container too —
+      // if that's allowed to happen for a mousedown that landed on the zoom controls, the
+      // buttons' own onClick never fires. Let clicks on them through uncaptured instead.
+      if ((event.target as HTMLElement).closest(".notegpt-zoom-controls")) return;
       dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: transform.x, originY: transform.y };
       event.currentTarget.setPointerCapture(event.pointerId);
       setIsDragging(true);

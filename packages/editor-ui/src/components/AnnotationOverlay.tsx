@@ -8,7 +8,7 @@ import { debounce } from "../utils/debounce.js";
 
 export interface AnnotationOverlayProps {
   scene: AnnotationScene;
-  onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
+  onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>, paneWidth: number) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
   /** Read-only: disables editing. Pan/zoom in this mode is driven externally (see ZoomableViewport), not by Excalidraw itself. */
   viewMode?: boolean;
@@ -43,15 +43,21 @@ export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef, vie
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Read at the moment the (debounced) save actually fires, not when it's scheduled, so it
+  // reflects the pane's current size — this is what later lets a consumer (PDF export) know
+  // whether elements sit under the centered text column or extend into the margins beside it.
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const debouncedOnChange = useRef(
     debounce((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>);
+      const paneWidth = containerRef.current?.clientWidth ?? 0;
+      onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>, paneWidth);
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
   return (
     <div
+      ref={containerRef}
       className="notegpt-annotation-overlay"
       // In view mode Excalidraw must not receive any pointer input at all — it has its
       // own drag-to-pan behavior which would move only the annotation canvas, not the
