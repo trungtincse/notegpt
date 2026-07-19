@@ -132,6 +132,18 @@ export function App() {
     if (filePath) setSelectedFilePath(filePath);
   }, [adapter, draftTitle, refreshNotes]);
 
+  const handleDeleteNote = useCallback(
+    async (filePath: string, title: string) => {
+      if (!adapter) return;
+      // window.confirm() works fine in Electron's renderer (unlike window.prompt(), see above).
+      if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+      await adapter.deleteNote(filePath);
+      if (selectedFilePath === filePath) setSelectedFilePath(null);
+      await refreshNotes();
+    },
+    [adapter, selectedFilePath, refreshNotes]
+  );
+
   useEffect(() => {
     const offOpenFolder = window.mdnote.onMenuOpenFolder(() => void handleOpenFolder());
     const offNewNote = window.mdnote.onMenuNewNote(() => void handleNewNote());
@@ -175,10 +187,24 @@ export function App() {
               className={entry.filePath === selectedFilePath ? "active" : ""}
               onClick={() => setSelectedFilePath(entry.filePath)}
             >
-              <div className="notegpt-note-list-title">
-                {titleMatches ? highlightMatches(entry.title, trimmedQuery) : entry.title}
+              <div className="notegpt-note-list-text">
+                <div className="notegpt-note-list-title">
+                  {titleMatches ? highlightMatches(entry.title, trimmedQuery) : entry.title}
+                </div>
+                {snippet && <div className="notegpt-note-list-snippet">{highlightMatches(snippet, trimmedQuery)}</div>}
               </div>
-              {snippet && <div className="notegpt-note-list-snippet">{highlightMatches(snippet, trimmedQuery)}</div>}
+              <button
+                type="button"
+                className="notegpt-note-delete"
+                title="Delete note"
+                aria-label={`Delete "${entry.title}"`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleDeleteNote(entry.filePath, entry.title);
+                }}
+              >
+                ✕
+              </button>
             </li>
           ))}
           {adapter && searchResults.length === 0 && (
