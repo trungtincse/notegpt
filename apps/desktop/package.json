@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./out/main/main.js",
   "scripts": {
-    "dev": "ELECTRON_DISABLE_SANDBOX=1 electron-vite dev",
+    "dev": "concurrently -k -n core,editor-ui,electron -c yellow,magenta,cyan \"pnpm --filter @notegpt/core dev\" \"pnpm --filter @notegpt/editor-ui dev\" \"ELECTRON_DISABLE_SANDBOX=1 electron-vite dev\"",
     "build": "electron-vite build",
     "preview": "ELECTRON_DISABLE_SANDBOX=1 electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -25,6 +25,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",

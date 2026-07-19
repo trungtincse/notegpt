@@ -3,7 +3,7 @@ import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { AnnotationScene } from "@notegpt/core";
-import { type MutableRefObject, useRef } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, useRef } from "react";
 import { debounce } from "../utils/debounce.js";
 
 export interface AnnotationOverlayProps {
@@ -36,6 +36,38 @@ function pickPersistedAppState(appState: AppState): Record<string, unknown> {
     picked[key] = appState[key];
   }
   return picked;
+}
+
+/**
+ * Matches Excalidraw's own zoomIn/zoomOut/resetZoom/zoomToFit* keyboard shortcuts
+ * (Ctrl/Cmd or Shift + =/-/0, and Shift+1/2/3). Those actions are registered with
+ * `viewMode: true` in Excalidraw, so they fire even though our overlay never shows
+ * its zoom UI — left alone, they'd change the annotation canvas's own zoom/scroll
+ * independently of the markdown text underneath, which has no such camera of its
+ * own and can't follow along, desyncing the two layers.
+ */
+function isExcalidrawZoomShortcut(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
+  const ctrlOrCmd = event.ctrlKey || event.metaKey;
+  switch (event.code) {
+    case "Equal":
+    case "NumpadAdd":
+    case "Minus":
+    case "NumpadSubtract":
+    case "Digit0":
+    case "Numpad0":
+      return ctrlOrCmd || event.shiftKey;
+    case "Digit1":
+    case "Digit2":
+    case "Digit3":
+      return event.shiftKey && !event.altKey && !ctrlOrCmd;
+    default:
+      return false;
+  }
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
 export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef, viewMode = false }: AnnotationOverlayProps) {
@@ -73,6 +105,15 @@ export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef, vie
       // mode, pointer-events: none above already keeps wheel events from ever reaching
       // Excalidraw in the first place, so this handler is edit-mode-only in practice.
       onWheelCapture={(event) => event.stopPropagation()}
+      // Same reasoning as onWheelCapture above, but for Excalidraw's zoom keyboard
+      // shortcuts: stop them here, before they reach Excalidraw's own listener, so
+      // the only way to zoom stays ZoomableViewport driving both layers together.
+      // Left through when focus is on an actual text input so typing "+"/"-"/"0"
+      // into an annotation text element (or elsewhere on the page) still works.
+      onKeyDownCapture={(event) => {
+        if (isEditableTarget(event.target) || !isExcalidrawZoomShortcut(event)) return;
+        event.stopPropagation();
+      }}
     >
       <Excalidraw
         excalidrawAPI={(api) => {
