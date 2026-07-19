@@ -380,6 +380,8 @@ body {
 
 .notegpt-codemirror-editor {
   height: 100%;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .notegpt-codemirror-editor .cm-editor {

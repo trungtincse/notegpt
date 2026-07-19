@@ -32,6 +32,7 @@ export function CodeMirrorEditor({ docId, initialValue, editable, onChange }: Co
       extensions: [
         basicSetup,
         markdown({ codeLanguages: languages }),
+        EditorView.lineWrapping,
         editableCompartment.current.of(EditorView.editable.of(editable)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) debouncedOnChange(update.state.doc.toString());

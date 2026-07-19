@@ -59,12 +59,16 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
   const selectTool = (type: ToolType) => {
     const api = excalidrawApiRef.current;
     api?.setActiveTool({ type });
-    // currentItemOpacity is a shared appState value, not scoped to the highlighter tool —
-    // without resetting it here, switching away from the highlighter (which sets it to 40
-    // for its translucent look) would leave every other tool drawing at 40% opacity too.
+    // currentItemOpacity/currentItemBackgroundColor are shared appState values, not scoped
+    // to the highlighter tool — without resetting them here, switching away from the
+    // highlighter (which sets 40% opacity and a solid yellow fill for its translucent look)
+    // would leave every other tool drawing at that opacity, and would fill in any freedraw
+    // stroke closed into a loop with that same leftover color.
     // currentItemFontFamily defaults to Excalidraw's hand-drawn "Virgil" font — Helvetica
     // reads as normal text instead, matching the rest of the app's UI font.
-    api?.updateScene({ appState: { currentItemOpacity: 100, currentItemFontFamily: FONT_FAMILY.Helvetica } });
+    api?.updateScene({
+      appState: { currentItemOpacity: 100, currentItemBackgroundColor: "transparent", currentItemFontFamily: FONT_FAMILY.Helvetica },
+    });
     setActiveTool(type);
   };
 
