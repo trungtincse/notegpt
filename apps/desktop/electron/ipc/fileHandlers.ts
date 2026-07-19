@@ -2,7 +2,8 @@ import { createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationSce
 import { dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
-import { addRecentFile, getRecentFiles } from "./recentFiles.js";
+import { getPinnedFiles, removePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
+import { addRecentFile, getRecentFiles, removeRecentFile } from "./recentFiles.js";
 import { getLastFolder, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
@@ -123,10 +124,15 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
 
   ipcMain.handle("mdnote:deleteNote", async (_event, filePath: string): Promise<void> => {
     await fs.unlink(filePath);
+    await removeRecentFile(filePath);
+    await removePinnedFile(filePath);
   });
 
   ipcMain.handle("mdnote:getRecentFiles", async (): Promise<string[]> => getRecentFiles());
   ipcMain.handle("mdnote:addRecentFile", async (_event, filePath: string): Promise<void> => addRecentFile(filePath));
+
+  ipcMain.handle("mdnote:getPinnedFiles", async (): Promise<string[]> => getPinnedFiles());
+  ipcMain.handle("mdnote:togglePinnedFile", async (_event, filePath: string): Promise<string[]> => togglePinnedFile(filePath));
 
   ipcMain.handle("mdnote:getLastFolder", async (): Promise<string | null> => getLastFolder());
 }

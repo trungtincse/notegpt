@@ -14,7 +14,12 @@ export const mdnoteApi = {
   deleteNote: (filePath: string): Promise<void> => ipcRenderer.invoke("mdnote:deleteNote", filePath),
   getRecentFiles: (): Promise<string[]> => ipcRenderer.invoke("mdnote:getRecentFiles"),
   addRecentFile: (filePath: string): Promise<void> => ipcRenderer.invoke("mdnote:addRecentFile", filePath),
+  getPinnedFiles: (): Promise<string[]> => ipcRenderer.invoke("mdnote:getPinnedFiles"),
+  togglePinnedFile: (filePath: string): Promise<string[]> => ipcRenderer.invoke("mdnote:togglePinnedFile", filePath),
   getLastFolder: (): Promise<string | null> => ipcRenderer.invoke("mdnote:getLastFolder"),
+  exportNotePdf: (folderPath: string, filePath: string, title: string): Promise<string | null> =>
+    ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
+  notifyPrintReady: (): void => ipcRenderer.send("mdnote:print-ready"),
   onMenuOpenFolder: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("mdnote:menu-open-folder", listener);

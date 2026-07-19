@@ -23,3 +23,17 @@ export async function addRecentFile(filePath: string): Promise<void> {
   const next = [filePath, ...existing.filter((entry) => entry !== filePath)].slice(0, MAX_RECENT);
   await fs.writeFile(recentFilesPath(), JSON.stringify(next, null, 2), "utf-8");
 }
+
+export async function removeRecentFile(filePath: string): Promise<void> {
+  const existing = await getRecentFiles();
+  if (!existing.includes(filePath)) return;
+  await fs.writeFile(
+    recentFilesPath(),
+    JSON.stringify(
+      existing.filter((entry) => entry !== filePath),
+      null,
+      2
+    ),
+    "utf-8"
+  );
+}

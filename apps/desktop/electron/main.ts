@@ -1,8 +1,12 @@
 import { join } from "node:path";
 import { app, BrowserWindow, Menu } from "electron";
+import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
 
 const isDev = !app.isPackaged;
+const preloadPath = join(__dirname, "../preload/preload.mjs");
+const rendererIndexPath = join(__dirname, "../renderer/index.html");
+const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -11,7 +15,7 @@ function createWindow(): void {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: join(__dirname, "../preload/preload.mjs"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       // Electron's sandboxed preload loader can't run ESM `import` (our preload
@@ -19,8 +23,12 @@ function createWindow(): void {
       sandbox: false,
     },
   });
-
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      mainWindow?.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  }); mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
     console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`);
   });
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
@@ -30,10 +38,10 @@ function createWindow(): void {
     console.log(`[render-process-gone] ${JSON.stringify(details)}`);
   });
 
-  if (isDev && process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  if (isDev && rendererDevUrl) {
+    void mainWindow.loadURL(rendererDevUrl);
   } else {
-    void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    void mainWindow.loadFile(rendererIndexPath);
   }
 
   mainWindow.on("closed", () => {
@@ -60,6 +68,7 @@ function buildMenu(): void {
 
 app.whenReady().then(() => {
   registerFileHandlers(() => mainWindow);
+  registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();
   createWindow();
 
