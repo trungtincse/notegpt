@@ -76,9 +76,16 @@ export function App() {
   const [draftTitle, setDraftTitle] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  // The same note can render in more than one section at once (e.g. pinned + all notes), so
+  // "which row is being edited/has its menu open" is keyed by section id + filePath, not just
+  // filePath — otherwise every duplicate row would open its input/menu at the same time, and
+  // two `autoFocus` rename inputs mounting together would steal focus from each other and
+  // fire onBlur/commitRename before the user could type anything.
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
+  const [openMenuSectionId, setOpenMenuSectionId] = useState<string | null>(null);
 
   // Debounced so fast typing doesn't re-filter/re-render the list on every keystroke;
   // the input itself stays bound to searchInput so typing never feels laggy.
@@ -168,7 +175,10 @@ export function App() {
 
   useEffect(() => {
     if (!openMenuPath) return;
-    const closeMenu = () => setOpenMenuPath(null);
+    const closeMenu = () => {
+      setOpenMenuPath(null);
+      setOpenMenuSectionId(null);
+    };
     window.addEventListener("click", closeMenu);
     return () => window.removeEventListener("click", closeMenu);
   }, [openMenuPath]);
@@ -210,7 +220,8 @@ export function App() {
     setPinnedPaths(updated);
   }, []);
 
-  const handleStartRename = useCallback((filePath: string, currentTitle: string) => {
+  const handleStartRename = useCallback((sectionId: string, filePath: string, currentTitle: string) => {
+    setRenamingSectionId(sectionId);
     setRenamingPath(filePath);
     setRenameDraft(currentTitle);
   }, []);
@@ -219,6 +230,7 @@ export function App() {
     const path = renamingPath;
     const title = renameDraft.trim();
     setRenamingPath(null);
+    setRenamingSectionId(null);
     if (!path || !adapter || !title) return;
     await adapter.renameNote(path, title);
     await refreshNotes();
@@ -246,8 +258,9 @@ export function App() {
     };
   }, [handleOpenFolder, handleNewNote]);
 
-  const renderRowActions = (entry: NoteListEntry) => {
+  const renderRowActions = (entry: NoteListEntry, sectionId: string) => {
     const isPinned = pinnedSet.has(entry.filePath);
+    const menuOpen = openMenuPath === entry.filePath && openMenuSectionId === sectionId;
     return (
       <div className="notegpt-note-list-actions">
         <button
@@ -269,19 +282,26 @@ export function App() {
           aria-label={`More actions for "${entry.title}"`}
           onClick={(e) => {
             e.stopPropagation();
-            setOpenMenuPath((current) => (current === entry.filePath ? null : entry.filePath));
+            if (menuOpen) {
+              setOpenMenuPath(null);
+              setOpenMenuSectionId(null);
+            } else {
+              setOpenMenuPath(entry.filePath);
+              setOpenMenuSectionId(sectionId);
+            }
           }}
         >
           <MoreHorizontal size={14} />
         </button>
-        {openMenuPath === entry.filePath && (
+        {menuOpen && (
           <div className="notegpt-note-more-menu" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="notegpt-note-more-menu-item"
               onClick={() => {
                 setOpenMenuPath(null);
-                handleStartRename(entry.filePath, entry.title);
+                setOpenMenuSectionId(null);
+                handleStartRename(sectionId, entry.filePath, entry.title);
               }}
             >
               Rename
@@ -291,6 +311,7 @@ export function App() {
               className="notegpt-note-more-menu-item danger"
               onClick={() => {
                 setOpenMenuPath(null);
+                setOpenMenuSectionId(null);
                 void handleDeleteNote(entry.filePath, entry.title);
               }}
             >
@@ -301,6 +322,7 @@ export function App() {
               className="notegpt-note-more-menu-item"
               onClick={() => {
                 setOpenMenuPath(null);
+                setOpenMenuSectionId(null);
                 handleExportPdf(entry.filePath, entry.title);
               }}
             >
@@ -312,14 +334,14 @@ export function App() {
     );
   };
 
-  const renderNoteRow = (entry: NoteListEntry, titleContent: ReactNode) => (
+  const renderNoteRow = (entry: NoteListEntry, titleContent: ReactNode, sectionId: string) => (
     <li
       key={entry.filePath}
       className={entry.filePath === selectedFilePath ? "active" : ""}
       onClick={() => setSelectedFilePath(entry.filePath)}
     >
       <div className="notegpt-note-list-text">
-        {renamingPath === entry.filePath ? (
+        {renamingPath === entry.filePath && renamingSectionId === sectionId ? (
           <input
             type="text"
             className="notegpt-note-rename-input"
@@ -329,7 +351,10 @@ export function App() {
             onChange={(e) => setRenameDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") void commitRename();
-              if (e.key === "Escape") setRenamingPath(null);
+              if (e.key === "Escape") {
+                setRenamingPath(null);
+                setRenamingSectionId(null);
+              }
             }}
             onBlur={() => void commitRename()}
           />
@@ -337,7 +362,7 @@ export function App() {
           titleContent
         )}
       </div>
-      {renderRowActions(entry)}
+      {renderRowActions(entry, sectionId)}
     </li>
   );
 
@@ -356,7 +381,7 @@ export function App() {
         </button>
         {!collapsed && (
           <ul className="notegpt-note-list">
-            {entries.map((entry) => renderNoteRow(entry, <div className="notegpt-note-list-title">{entry.title}</div>))}
+            {entries.map((entry) => renderNoteRow(entry, <div className="notegpt-note-list-title">{entry.title}</div>, id))}
             {entries.length === 0 && <li className="notegpt-note-list-empty">No notes yet.</li>}
           </ul>
         )}
@@ -404,7 +429,8 @@ export function App() {
                     {titleMatches ? highlightMatches(entry.title, trimmedQuery) : entry.title}
                   </div>
                   {snippet && <div className="notegpt-note-list-snippet">{highlightMatches(snippet, trimmedQuery)}</div>}
-                </>
+                </>,
+                "search"
               )
             )}
             {adapter && searchResults.length === 0 && <li className="notegpt-note-list-empty">No notes match your search.</li>}

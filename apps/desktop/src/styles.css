@@ -6,7 +6,12 @@ html, body, #root {
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
 }
-
+.mobile-misc-tools-container{
+  display: none !important;
+}
+.excalidraw .App-toolbar {
+  display: none !important;
+}
 .notegpt-app {
   display: flex;
   height: 100vh;
@@ -463,6 +468,17 @@ body {
    it), so it stays hidden there too — ZoomableViewport's own controls zoom
    both together instead. */
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper {
+  display: none;
+}
+
+/* Excalidraw shows its own "Welcome Screen" chrome (logo/heading plus hint
+   arrows pointing at where its menu/toolbar/help button would be) whenever a
+   note's annotation scene has zero elements — it's a separate overlay from
+   .layer-ui__wrapper above, so a brand-new or never-annotated note (unlike one
+   that already has drawing elements on it) would otherwise still show this
+   default chrome even though the rest of Excalidraw's UI is hidden. */
+.notegpt-annotation-overlay .excalidraw .welcome-screen-center,
+.notegpt-annotation-overlay .excalidraw .welcome-screen-decor {
   display: none;
 }
 

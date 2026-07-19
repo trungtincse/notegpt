@@ -145,7 +145,7 @@ async function removePinnedFile(filePath) {
     "utf-8"
   );
 }
-const MAX_RECENT = 10;
+const MAX_RECENT = 3;
 function recentFilesPath() {
   return join(app.getPath("userData"), "recent-files.json");
 }

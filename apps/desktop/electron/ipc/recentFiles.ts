@@ -2,7 +2,7 @@ import { app } from "electron";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
-const MAX_RECENT = 10;
+const MAX_RECENT = 3;
 
 function recentFilesPath(): string {
   return join(app.getPath("userData"), "recent-files.json");
