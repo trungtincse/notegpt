@@ -1,6 +1,6 @@
 import { ensureMarkdownElements, getSceneBounds, type Note } from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
 
 // Padding (px) around the scene's content bounds so nothing sits flush against the page edge.
@@ -32,8 +32,16 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
     };
   }, [folderPath, filePath]);
 
-  useEffect(() => {
-    if (!note) return;
+  // Fires once AnnotationOverlay's own readiness signal lands — every markdown block has
+  // reported its real rendered height (or a fallback timeout inside it gave up waiting) —
+  // rather than a fixed animation-frame delay from mount. A fixed delay assumes Excalidraw
+  // itself has already finished booting by then, which held for a production `vite build`
+  // bundle but not for `electron-vite dev`'s unbundled dev server (plus React StrictMode's
+  // double-render): there, PDFs were being captured while Excalidraw was still showing its
+  // own "Loading scene…" placeholder, with no visible markdown text at all. Two more
+  // animation frames after the signal still ensures the corresponding state updates
+  // (e.g. the last per-block height correction) have actually painted before measuring.
+  const handleAnnotationReady = useCallback(() => {
     void waitTwoAnimationFrames().then(() => {
       // The title's height isn't part of the scene bounds used to size the page
       // (see printScene below), so the real page height — including it — has to
@@ -41,7 +49,7 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
       const height = pageRef.current?.getBoundingClientRect().height ?? 0;
       window.mdnote.notifyPrintReady(height);
     });
-  }, [note]);
+  }, []);
 
   // Excalidraw is a fixed-viewport camera, not an auto-growing document — unlike the
   // old two-layer DOM composition, the print window must be explicitly sized and
@@ -72,7 +80,14 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
     <div className="notegpt-print-page" ref={pageRef}>
       <h1 className="notegpt-print-title">{note.title}</h1>
       <div style={{ position: "relative", width: printScene.width, height: printScene.height }}>
-        <AnnotationOverlay markdownBlocks={note.markdownBlocks} scene={printScene.scene} onChange={() => {}} viewMode centerOnMount={false} />
+        <AnnotationOverlay
+          markdownBlocks={note.markdownBlocks}
+          scene={printScene.scene}
+          onChange={() => {}}
+          viewMode
+          centerOnMount={false}
+          onReady={handleAnnotationReady}
+        />
       </div>
     </div>
   );

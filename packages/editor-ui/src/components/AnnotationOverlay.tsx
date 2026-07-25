@@ -32,6 +32,15 @@ export interface AnnotationOverlayProps {
    * positioning on just the markdown blocks there would fight that and push content
    * outside the page's fixed bounds. */
   centerOnMount?: boolean;
+  /** Fires once every markdown block has reported its real (ResizeObserver-measured)
+   * height, or a short timeout elapses first — independent of `centerOnMount` (this fires
+   * whether or not the camera actually gets repositioned). PrintView uses this instead of a
+   * fixed animation-frame delay: Excalidraw's own boot time varies a lot by build (a `vite
+   * build` production bundle vs. `electron-vite dev`'s unbundled dev server can differ by a
+   * lot more than a couple of frames), so a fixed delay either wastes time or — as happened
+   * in dev mode — fires before the scene has even left Excalidraw's own "Loading scene…"
+   * placeholder, exporting a PDF with no visible text. */
+  onReady?: () => void;
 }
 
 const CHANGE_DEBOUNCE_MS = 400;
@@ -106,11 +115,14 @@ export function AnnotationOverlay({
   apiRef: externalApiRef,
   viewMode = false,
   centerOnMount = true,
+  onReady,
 }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const markdownById = useMemo(() => new Map(markdownBlocks.map((b) => [b.id, b.markdown])), [markdownBlocks]);
 
@@ -153,8 +165,8 @@ export function AnnotationOverlay({
     [apiRef, debouncedOnChange]
   );
 
-  // Multi-block centering state, scoped to one mount of this component. Three past bugs
-  // (all found the hard way — see git history on this file) must not be reintroduced:
+  // Multi-block readiness/centering state, scoped to one mount of this component. Four past
+  // bugs (all found the hard way — see git history on this file) must not be reintroduced:
   // (1) centering on the WHOLE scene skews off-center as soon as an annotation sits outside
   //     the markdown columns — only ever center on markdown elements specifically;
   // (2) forcing embeddables' `activeEmbeddable` active gives them `pointer-events: auto`,
@@ -163,10 +175,14 @@ export function AnnotationOverlay({
   //     constructor, before it has loaded elements or measured its real container size, so
   //     centering must wait for a later effect/callback, and specifically for each block's
   //     *real* ResizeObserver-measured height, not the placeholder default height that
-  //     ensureMarkdownElements gives a freshly-created block.
-  const hasCenteredRef = useRef(false);
+  //     ensureMarkdownElements gives a freshly-created block;
+  // (4) this "block is ready" tracking must run even when `shouldAutoCenter` is false
+  //     (PrintView) — it's the only real signal that Excalidraw has actually finished
+  //     rendering content, which `onReady` depends on regardless of whether the camera
+  //     itself gets repositioned.
+  const hasReportedReadyRef = useRef(false);
   const pendingBlockIdsRef = useRef<Set<string> | null>(null);
-  const centerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Excalidraw's own default camera (wherever it happens to land before centering runs)
   // is never shown — the overlay stays invisible until the correct position is set, so the
   // user only ever sees the final centered state instead of a visible jump/flash between the
@@ -181,25 +197,31 @@ export function AnnotationOverlay({
   // `scrollToContent` centers on both axes, which looks fine horizontally (a row of cards)
   // but leaves a huge, lopsided-feeling gap above short content in a tall/maximized window.
   // Reimplemented by hand (not scrollToContent) since it has no "center X, align-top Y" mode.
-  const centerOnElements = useCallback((api: ExcalidrawImperativeAPI, elements: readonly ExcalidrawElement[]) => {
-    if (hasCenteredRef.current) return;
-    hasCenteredRef.current = true;
-    if (centerTimeoutRef.current) {
-      clearTimeout(centerTimeoutRef.current);
-      centerTimeoutRef.current = null;
-    }
-    if (elements.length > 0) {
-      const minX = Math.min(...elements.map((el) => el.x));
-      const maxX = Math.max(...elements.map((el) => el.x + el.width));
-      const minY = Math.min(...elements.map((el) => el.y));
-      const appState = api.getAppState();
-      const zoom = appState.zoom.value;
-      const scrollX = appState.width / 2 / zoom - (minX + maxX) / 2;
-      const scrollY = TOP_ALIGN_PADDING / zoom - minY;
-      api.updateScene({ appState: { scrollX, scrollY }, captureUpdate: CaptureUpdateAction.NEVER });
-    }
-    setIsPositioned(true);
-  }, []);
+  // Fires unconditionally once (the readiness signal callers like PrintView depend on), but
+  // only actually moves the camera when `shouldAutoCenter` is true.
+  const markReadyAndMaybeCenter = useCallback(
+    (api: ExcalidrawImperativeAPI, elements: readonly ExcalidrawElement[]) => {
+      if (hasReportedReadyRef.current) return;
+      hasReportedReadyRef.current = true;
+      if (readyTimeoutRef.current) {
+        clearTimeout(readyTimeoutRef.current);
+        readyTimeoutRef.current = null;
+      }
+      if (shouldAutoCenter && elements.length > 0) {
+        const minX = Math.min(...elements.map((el) => el.x));
+        const maxX = Math.max(...elements.map((el) => el.x + el.width));
+        const minY = Math.min(...elements.map((el) => el.y));
+        const appState = api.getAppState();
+        const zoom = appState.zoom.value;
+        const scrollX = appState.width / 2 / zoom - (minX + maxX) / 2;
+        const scrollY = TOP_ALIGN_PADDING / zoom - minY;
+        api.updateScene({ appState: { scrollX, scrollY }, captureUpdate: CaptureUpdateAction.NEVER });
+      }
+      setIsPositioned(true);
+      onReadyRef.current?.();
+    },
+    [shouldAutoCenter]
+  );
 
   const handleHeightChange = useCallback(
     (elementId: string, height: number) => {
@@ -216,22 +238,22 @@ export function AnnotationOverlay({
         api.updateScene({ elements: nextElements, captureUpdate: CaptureUpdateAction.NEVER });
       }
 
-      if (!shouldAutoCenter || hasCenteredRef.current) return;
+      if (hasReportedReadyRef.current) return;
       const pending = pendingBlockIdsRef.current;
       if (!pending) return;
       const blockId = parseMarkdownElementId(elementId);
       if (blockId === null || !pending.has(blockId)) return;
       pending.delete(blockId);
       if (pending.size === 0) {
-        centerOnElements(api, nextElements.filter((el) => isMarkdownElementId(el.id)));
+        markReadyAndMaybeCenter(api, nextElements.filter((el) => isMarkdownElementId(el.id)));
       }
     },
-    [apiRef, shouldAutoCenter, centerOnElements]
+    [apiRef, markReadyAndMaybeCenter]
   );
 
   // Seeds the pending-block set at mount (only ever run once — deliberately empty deps —
-  // so a block added later via "+ Add note" can't re-trigger centering) and arms a short
-  // fallback timer.
+  // so a block added later via "+ Add note" can't re-trigger this) and arms a short fallback
+  // timer. Runs regardless of `shouldAutoCenter`/`centerOnMount` — see point (4) above.
   //
   // Deliberately does NOT bail out just because `apiRef.current` isn't set yet: the
   // `excalidrawAPI` ref callback (which sets it, from Excalidraw's own constructor) is not
@@ -248,33 +270,40 @@ export function AnnotationOverlay({
   // With several blocks side by side wider than one screen, the ones outside the pre-camera-
   // move default viewport structurally never fire `handleHeightChange` at all — `pending`
   // then never reaches zero, and every such mount hits this timer, using whatever height
-  // (real or still-placeholder) each block happens to have at that moment. Kept short so an
-  // off-screen block doesn't stall the visible ones behind a multi-second delay.
+  // (real or still-placeholder) each block happens to have at that moment.
+  //
+  // 3000ms, not something snappier: this genuinely needs to outlast how long Excalidraw
+  // itself can take to boot, which varies far more than a couple of animation frames across
+  // builds and machine load — a production `vite build` bundle mounts fast, but
+  // `electron-vite dev`'s unbundled dev server (plus React StrictMode's double-render) can
+  // leave Excalidraw showing its own "Loading scene…" placeholder for anywhere from ~150ms
+  // to well over a second depending on system load, which is exactly what silently broke
+  // PrintView's PDF export (measuring/printing that placeholder instead of real content) —
+  // confirmed flaky even at 800ms under load, not just a one-off fluke. Still comfortably
+  // under exportPdf.ts's own outer PRINT_READY_TIMEOUT_MS (5000ms) safety net.
   useEffect(() => {
-    if (!shouldAutoCenter) return;
-
     const blockIds = markdownBlocks.map((b) => b.id);
     pendingBlockIdsRef.current = new Set(blockIds);
 
     // Always armed, regardless of whether `pending` is already empty or `apiRef.current` is
-    // set yet — the sole guarantee that this note ever gets revealed. The zero-blocks
+    // set yet — the sole guarantee that `onReady`/centering ever fires. The zero-blocks
     // fast-path below is purely an optimization (skips the wait when possible); it must not
     // be the only path, or a zero-block note mounted "cold" (api not ready yet right now)
-    // would stay hidden forever with nothing left to trigger a reveal.
-    centerTimeoutRef.current = setTimeout(() => {
+    // would stay hidden/unsignaled forever with nothing left to trigger it.
+    readyTimeoutRef.current = setTimeout(() => {
       const api = apiRef.current;
       if (!api) return;
       const els = api.getSceneElements();
       const markdownEls = els.filter((el) => isMarkdownElementId(el.id));
-      centerOnElements(api, markdownEls.length > 0 ? markdownEls : els);
-    }, 150);
+      markReadyAndMaybeCenter(api, markdownEls.length > 0 ? markdownEls : els);
+    }, 800);
 
     if (pendingBlockIdsRef.current.size === 0 && apiRef.current) {
-      centerOnElements(apiRef.current, apiRef.current.getSceneElements());
+      markReadyAndMaybeCenter(apiRef.current, apiRef.current.getSceneElements());
     }
 
     return () => {
-      if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
+      if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
