@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 2,
+  "note": {
+    "id": "welcome-note",
+    "title": "Giới thiệu notegpt",
+    "markdownBlocks": [
+      {
+        "id": "welcome-intro",
+        "title": "Giới thiệu",
+        "markdown": "# Chào mừng đến với notegpt\n\nApp ghi chú kết hợp **markdown** và **annotation** (vẽ tay trên Excalidraw), dùng để lưu lại và chú thích các câu trả lời từ ChatGPT (hoặc bất kỳ nội dung markdown nào).\n\n## 3 chế độ xem (đổi ở góc trên bên phải)\n- **Markdown** — soạn nội dung text, chia thành nhiều \"sticky note\" độc lập.\n- **Annotation** — vẽ/tô/chú thích trực tiếp lên nội dung.\n- **View** — xem lại, chỉ đọc, không vẽ được.\n\nXem tiếp ở tab 'Sticky notes' và 'Công cụ vẽ & Export' bên cạnh."
+      },
+      {
+        "id": "welcome-sticky-notes",
+        "title": "Sticky notes",
+        "markdown": "# Nhiều ghi chú như sticky note\n\nMỗi note (như note này) là 1 block markdown độc lập, hiển thị như 1 tờ sticky note trên canvas ở tab Annotation:\n\n- Kéo-thả / resize tự do trên canvas.\n- Đổi tên tab: double-click vào tên tab ở trên để sửa.\n- Xoá 1 note: bấm nút 'x' trên tab, hoặc chọn sticky note trên canvas rồi bấm phím Delete.\n- Thêm note mới: bấm nút '+' cạnh các tab.\n\nXoá bằng canvas sẽ tự động xoá luôn nội dung text tương ứng — không cần làm 2 bước."
+      },
+      {
+        "id": "welcome-tools-export",
+        "title": "Công cụ vẽ & Export",
+        "markdown": "# Công cụ vẽ (tab Annotation)\n\n- Select / Hand — chọn, di chuyển, hoặc kéo canvas.\n- Pen — vẽ tay tự do.\n- Text / Image — chèn chữ hoặc ảnh.\n- Highlighter — tô sáng (vàng, mờ) lên nội dung, không xoá được chữ bên dưới.\n- Eraser — xoá nét vẽ/annotation. Sticky note (nội dung markdown) không thể bị Eraser xoá nhầm.\n- Chọn màu và độ dày nét ở giữa toolbar.\n- Undo và Delete selected ở cuối toolbar.\n\n## Xuất PDF\nMenu export sẽ xuất toàn bộ note (mọi sticky note + mọi nét vẽ) ra 1 file PDF vừa đúng 1 trang, không bị cắt hay chia trang."
+      }
+    ],
+    "annotation": {
+      "elements": [
+        {
+          "id": "notegpt-markdown:welcome-intro",
+          "type": "embeddable",
+          "x": 0,
+          "y": 0,
+          "width": 900,
+          "height": 400,
+          "link": "notegpt:markdown",
+          "locked": false,
+          "strokeColor": "transparent",
+          "backgroundColor": "transparent"
+        },
+        {
+          "id": "notegpt-markdown:welcome-sticky-notes",
+          "type": "embeddable",
+          "x": 940,
+          "y": 0,
+          "width": 900,
+          "height": 400,
+          "link": "notegpt:markdown",
+          "locked": false,
+          "strokeColor": "transparent",
+          "backgroundColor": "transparent"
+        },
+        {
+          "id": "notegpt-markdown:welcome-tools-export",
+          "type": "embeddable",
+          "x": 1880,
+          "y": 0,
+          "width": 900,
+          "height": 400,
+          "link": "notegpt:markdown",
+          "locked": false,
+          "strokeColor": "transparent",
+          "backgroundColor": "transparent"
+        }
+      ],
+      "appState": {},
+      "files": {}
+    },
+    "schemaVersion": 2,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+}

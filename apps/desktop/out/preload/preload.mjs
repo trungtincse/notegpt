@@ -14,6 +14,7 @@ const mdnoteApi = {
   getLastFolder: () => ipcRenderer.invoke("mdnote:getLastFolder"),
   getHasSeenWelcome: () => ipcRenderer.invoke("mdnote:getHasSeenWelcome"),
   markWelcomeSeen: () => ipcRenderer.invoke("mdnote:markWelcomeSeen"),
+  ensureWelcomeNoteFile: () => ipcRenderer.invoke("mdnote:ensureWelcomeNoteFile"),
   exportNotePdf: (folderPath, filePath, title) => ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
   notifyPrintReady: (contentHeight) => ipcRenderer.send("mdnote:print-ready", contentHeight),
   onMenuOpenFolder: (callback) => {

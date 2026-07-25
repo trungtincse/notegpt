@@ -2,8 +2,6 @@ import { EditorShell } from "@notegpt/editor-ui";
 import { ChevronDown, FolderOpen, MoreHorizontal, Pin, PinOff, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
-import { WelcomeNoteStorageAdapter } from "./adapters/WelcomeNoteStorageAdapter.js";
-import { WELCOME_NOTE_ID } from "./welcomeNote.js";
 
 interface NoteListEntry {
   filePath: string;
@@ -75,12 +73,17 @@ export function App() {
   });
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  // Shows the bundled intro note (read-only, view mode) the very first time the app is ever
-  // opened, replacing the empty-state placeholder in <main> until the user picks a real note
-  // or folder. Persisted via mdnote:getHasSeenWelcome/markWelcomeSeen so it never reappears
-  // on later launches once shown.
+  // Shows the bundled intro note (view mode first) the very first time the app is ever opened,
+  // replacing the empty-state placeholder in <main> until the user picks a real note or folder.
+  // Persisted via mdnote:getHasSeenWelcome/markWelcomeSeen so it never reappears on later
+  // launches once shown. It's seeded to a real .mdnote file in userData (see
+  // ensureWelcomeNoteFile) so edits — including annotations — persist like any other note.
   const [showingWelcome, setShowingWelcome] = useState(false);
-  const welcomeAdapter = useMemo(() => new WelcomeNoteStorageAdapter(), []);
+  const [welcomeFilePath, setWelcomeFilePath] = useState<string | null>(null);
+  // folderPath is irrelevant here: the welcome note's address is the absolute file path
+  // returned by ensureWelcomeNoteFile, and only loadNote/saveNote (which ignore folderPath)
+  // are ever called on this adapter.
+  const welcomeAdapter = useMemo(() => new LocalFsStorageAdapter(""), []);
   const [draftTitle, setDraftTitle] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -182,8 +185,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void window.mdnote.getHasSeenWelcome().then((seen) => {
+    void window.mdnote.getHasSeenWelcome().then(async (seen) => {
       if (seen) return;
+      const filePath = await window.mdnote.ensureWelcomeNoteFile();
+      setWelcomeFilePath(filePath);
       setShowingWelcome(true);
       void window.mdnote.markWelcomeSeen();
     });
@@ -463,8 +468,8 @@ export function App() {
       <main className="notegpt-main">
         {adapter && selectedFilePath ? (
           <EditorShell key={`${selectedFilePath}:${reloadToken}`} storage={adapter} noteId={selectedFilePath} />
-        ) : showingWelcome ? (
-          <EditorShell key="welcome" storage={welcomeAdapter} noteId={WELCOME_NOTE_ID} initialMode="view" />
+        ) : showingWelcome && welcomeFilePath ? (
+          <EditorShell key="welcome" storage={welcomeAdapter} noteId={welcomeFilePath} initialMode="view" />
         ) : (
           <div style={{ padding: 24, color: "#888" }}>
             {folderPath ? "Select or create a note." : "Open a folder to get started."}

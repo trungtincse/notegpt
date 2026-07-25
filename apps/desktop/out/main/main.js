@@ -193,6 +193,7 @@ async function markWelcomeSeen() {
   await promises.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
 }
 const MDNOTE_EXT = ".mdnote";
+const BUNDLED_WELCOME_NOTE_PATH = join(__dirname, "../../resources/welcome.mdnote");
 function extractAnnotationText(scene) {
   return scene.elements.filter((element) => {
     if (typeof element !== "object" || element === null) return false;
@@ -287,6 +288,15 @@ function registerFileHandlers(getWindow) {
   ipcMain.handle("mdnote:getLastFolder", async () => getLastFolder());
   ipcMain.handle("mdnote:getHasSeenWelcome", async () => getHasSeenWelcome());
   ipcMain.handle("mdnote:markWelcomeSeen", async () => markWelcomeSeen());
+  ipcMain.handle("mdnote:ensureWelcomeNoteFile", async () => {
+    const filePath = join(app.getPath("userData"), `welcome${MDNOTE_EXT}`);
+    const exists = await promises.access(filePath).then(() => true).catch(() => false);
+    if (!exists) {
+      const seedRaw = await promises.readFile(BUNDLED_WELCOME_NOTE_PATH, "utf-8");
+      await promises.writeFile(filePath, seedRaw, "utf-8");
+    }
+    return filePath;
+  });
 }
 app.commandLine.appendSwitch("no-sandbox");
 const isDev = !app.isPackaged;

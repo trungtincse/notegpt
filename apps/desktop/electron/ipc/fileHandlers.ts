@@ -1,5 +1,5 @@
 import { concatMarkdownBlocks, createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationScene, type Note } from "@notegpt/core";
-import { dialog, ipcMain, type BrowserWindow } from "electron";
+import { app, dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
 import { getPinnedFiles, removePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
@@ -7,6 +7,11 @@ import { addRecentFile, getRecentFiles, removeRecentFile } from "./recentFiles.j
 import { getHasSeenWelcome, getLastFolder, markWelcomeSeen, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
+
+// electron-vite bundles the whole main process into a single out/main/main.js, so __dirname
+// here is always "<app root>/out/main" in both dev and the packaged app.asar — no
+// app.isPackaged branching needed to find the bundled resources/ folder next to it.
+const BUNDLED_WELCOME_NOTE_PATH = join(__dirname, "../../resources/welcome.mdnote");
 
 export interface NoteFileSummary {
   filePath: string;
@@ -138,4 +143,22 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
 
   ipcMain.handle("mdnote:getHasSeenWelcome", async (): Promise<boolean> => getHasSeenWelcome());
   ipcMain.handle("mdnote:markWelcomeSeen", async (): Promise<void> => markWelcomeSeen());
+
+  // Copies the bundled first-launch note (a real, hand-editable .mdnote file authored in
+  // apps/desktop/resources/) into userData the first time it's needed, so edits — including
+  // annotations — persist like any other note instead of being silently discarded. Never
+  // overwrites an existing file, so a user's edits to it survive across app updates that change
+  // the bundled seed content.
+  ipcMain.handle("mdnote:ensureWelcomeNoteFile", async (): Promise<string> => {
+    const filePath = join(app.getPath("userData"), `welcome${MDNOTE_EXT}`);
+    const exists = await fs
+      .access(filePath)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) {
+      const seedRaw = await fs.readFile(BUNDLED_WELCOME_NOTE_PATH, "utf-8");
+      await fs.writeFile(filePath, seedRaw, "utf-8");
+    }
+    return filePath;
+  });
 }
