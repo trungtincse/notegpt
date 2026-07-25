@@ -1,4 +1,11 @@
-import { ensureMarkdownElements, getSceneBounds, isVisiblyRendered, replaceYoutubeEmbedsForPrint, type Note } from "@notegpt/core";
+import {
+  ensureMarkdownElements,
+  getSceneBounds,
+  isVisiblyRendered,
+  replaceTiktokEmbedsForPrint,
+  replaceYoutubeEmbedsForPrint,
+  type Note,
+} from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
@@ -29,7 +36,20 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
       const adapter = new LocalFsStorageAdapter(folderPath);
       const loaded = await adapter.loadNote(filePath);
       loaded.annotation = await adapter.resolveAssetsForRead(loaded.annotation);
-      if (!cancelled) setNote(loaded);
+
+      // Swapped for static thumbnails only in this print copy — the live canvas (and its
+      // saved scene) keeps the real, playable embeds; see replaceYoutubeEmbedsForPrint's and
+      // replaceTiktokEmbedsForPrint's own comments. Resolved here, before `note` is ever set
+      // (and so before AnnotationOverlay mounts and starts its own readiness countdown — see
+      // handleAnnotationReady), since the TikTok swap needs a network round trip and must be
+      // done well before exportPdf.ts's own outer PRINT_READY_TIMEOUT_MS runs out.
+      const rawElements = ensureMarkdownElements(loaded.annotation.elements, loaded.markdownBlocks.map((b) => b.id));
+      const withYoutube = replaceYoutubeEmbedsForPrint(rawElements, loaded.annotation.files);
+      const { elements, files } = await replaceTiktokEmbedsForPrint(withYoutube.elements, withYoutube.files);
+
+      if (!cancelled) {
+        setNote({ ...loaded, annotation: { ...loaded.annotation, elements, files } });
+      }
     })();
     return () => {
       cancelled = true;
@@ -60,10 +80,7 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
   // scrolled to fit the *entire* scene, using the scene's own content bounds.
   const printScene = useMemo(() => {
     if (!note) return null;
-    const rawElements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
-    // Swapped for static thumbnails only in this print copy — the live canvas (and its saved
-    // scene) keeps the real, playable embed; see replaceYoutubeEmbedsForPrint's own comment.
-    const { elements, files } = replaceYoutubeEmbedsForPrint(rawElements, note.annotation.files);
+    const elements = note.annotation.elements;
     // Sizing/positioning is based on only the *visible* elements — an invisible leftover
     // stroke (fully transparent stroke and fill, e.g. drawn with the wrong color mid-testing
     // and never cleaned up) still has real x/y/width/height and would otherwise stretch the
@@ -74,8 +91,6 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
     return {
       scene: {
         ...note.annotation,
-        elements,
-        files,
         appState: {
           ...note.annotation.appState,
           scrollX: -minX + CONTENT_PADDING,

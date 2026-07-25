@@ -1,12 +1,16 @@
-import { CaptureUpdateAction, Excalidraw, FONT_FAMILY } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, restoreElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import {
   ensureMarkdownElements,
+  extractTiktokVideoId,
+  fetchTiktokOEmbed,
+  getTiktokEmbedSrc,
   isMarkdownElementId,
   parseMarkdownElementId,
   parseNoteLink,
+  parseTiktokEmbedCode,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   type AnnotationScene,
   type MarkdownBlock,
@@ -112,6 +116,40 @@ function MarkdownEmbeddable({
       <MarkdownPreview markdown={markdown} />
     </div>
   );
+}
+
+// Fallback size (TikTok's own long-documented default embed card dimensions — the player
+// chrome plus its like/comment/share icon column) for when the oEmbed lookup below fails
+// (offline, API hiccup) and there's no per-video size to go by.
+const TIKTOK_EMBED_FALLBACK_WIDTH = 325;
+const TIKTOK_EMBED_FALLBACK_HEIGHT = 739;
+
+/** Inserts a correctly-linked, correctly-sized TikTok embeddable at the current viewport's
+ * center — bypassing Excalidraw's own paste handling, which has no TikTok-specific pattern and
+ * would otherwise misparse the pasted embed code's first `<a href>` (the author's profile link)
+ * as the link (see parseTiktokEmbedCode). Sized from TikTok's own oEmbed response rather than a
+ * guess — its embed card isn't just the video: the like/comment/share icon column down the side
+ * needs real width too, and a size guessed too small clips it or forces a scrollbar (see
+ * fetchTiktokOEmbed's own comment). `restoreElements` (the same normalization Excalidraw itself
+ * runs on `initialData`/library paste) fills in every field a hand-built partial element is
+ * missing — `updateScene` on its own does not. */
+async function insertTiktokEmbeddable(api: ExcalidrawImperativeAPI, videoUrl: string): Promise<void> {
+  const oEmbed = await fetchTiktokOEmbed(videoUrl);
+  const width = oEmbed?.width ?? TIKTOK_EMBED_FALLBACK_WIDTH;
+  const height = oEmbed?.height ?? TIKTOK_EMBED_FALLBACK_HEIGHT;
+
+  const appState = api.getAppState();
+  const zoom = appState.zoom.value;
+  const sceneX = appState.width / 2 / zoom - appState.scrollX - width / 2;
+  const sceneY = appState.height / 2 / zoom - appState.scrollY - height / 2;
+  const [restored] = restoreElements(
+    [{ type: "embeddable", x: sceneX, y: sceneY, width, height, link: videoUrl }] as ExcalidrawElement[],
+    null
+  );
+  api.updateScene({
+    elements: [...api.getSceneElements(), restored],
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
 }
 
 export function AnnotationOverlay({
@@ -359,15 +397,33 @@ export function AnnotationOverlay({
         validateEmbeddable
         renderEmbeddable={(element) => {
           const blockId = parseMarkdownElementId(element.id);
-          if (blockId === null) return null;
-          return (
-            <MarkdownEmbeddable
-              key={element.id}
-              elementId={element.id}
-              markdown={markdownById.get(blockId) ?? ""}
-              onHeightChange={handleHeightChange}
-            />
-          );
+          if (blockId !== null) {
+            return (
+              <MarkdownEmbeddable
+                key={element.id}
+                elementId={element.id}
+                markdown={markdownById.get(blockId) ?? ""}
+                onHeightChange={handleHeightChange}
+              />
+            );
+          }
+          // Excalidraw has no built-in notion of TikTok (unlike YouTube/Vimeo/etc — see
+          // getEmbedLink) and would otherwise try to iframe the plain watch-page URL directly,
+          // which TikTok's frame-ancestors policy blocks — this points the iframe at TikTok's
+          // own embeddable endpoint instead.
+          const tiktokVideoId = typeof element.link === "string" ? extractTiktokVideoId(element.link) : null;
+          if (tiktokVideoId !== null) {
+            return (
+              <iframe
+                key={element.id}
+                src={getTiktokEmbedSrc(tiktokVideoId)}
+                title="TikTok video"
+                allow="encrypted-media; fullscreen"
+                style={{ width: "100%", height: "100%", border: "none" }}
+              />
+            );
+          }
+          return null;
         }}
         onLinkOpen={(element, event) => {
           // The markdown container's `link` is a placeholder, never a real URL (see
@@ -383,9 +439,19 @@ export function AnnotationOverlay({
             onOpenNoteLink?.(notePath);
           }
         }}
-        // See the paste-correction block in handleExcalidrawChange for why this only sets a
-        // flag instead of touching appState/elements here.
-        onPaste={() => {
+        onPaste={async (data) => {
+          // TikTok's own "Copy embed code" HTML has no Excalidraw-recognized URL pattern (see
+          // parseTiktokEmbedCode) — handled here, before Excalidraw's default paste ever sees
+          // it, so it doesn't get misparsed into an embeddable linking at the author's profile
+          // page instead of the video.
+          const tiktok = typeof data.text === "string" ? parseTiktokEmbedCode(data.text) : null;
+          if (tiktok) {
+            const api = apiRef.current;
+            if (api) await insertTiktokEmbeddable(api, tiktok.videoUrl);
+            return false;
+          }
+          // See the paste-correction block in handleExcalidrawChange for why this only sets a
+          // flag instead of touching appState/elements here.
           justPastedRef.current = true;
           return true;
         }}
