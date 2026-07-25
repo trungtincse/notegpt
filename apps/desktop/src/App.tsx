@@ -82,8 +82,10 @@ export function App() {
   const [welcomeFilePath, setWelcomeFilePath] = useState<string | null>(null);
   // folderPath is irrelevant here: the welcome note's address is the absolute file path
   // returned by ensureWelcomeNoteFile, and only loadNote/saveNote (which ignore folderPath)
-  // are ever called on this adapter.
-  const welcomeAdapter = useMemo(() => new LocalFsStorageAdapter(""), []);
+  // are ever called on this adapter. Reused as the fallback storage for any note opened via
+  // an in-note link (see handleOpenNoteLink) before a folder has ever been picked, for the
+  // same reason — that path is just as folderPath-agnostic.
+  const pathAdapter = useMemo(() => new LocalFsStorageAdapter(""), []);
   const [draftTitle, setDraftTitle] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -184,6 +186,14 @@ export function App() {
     });
   }, []);
 
+  // A window opened via handleOpenNoteLink (see below) is told which note to show through a
+  // `?openNote=` query param on its own load URL — main.ts's createWindow sets it — instead of
+  // some IPC round-trip, since the window doesn't exist yet at the point the link is clicked.
+  useEffect(() => {
+    const openNote = new URLSearchParams(window.location.search).get("openNote");
+    if (openNote) setSelectedFilePath(openNote);
+  }, []);
+
   useEffect(() => {
     void window.mdnote.getHasSeenWelcome().then(async (seen) => {
       if (seen) return;
@@ -211,6 +221,13 @@ export function App() {
       setSelectedFilePath(null);
       setShowingWelcome(false);
     }
+  }, []);
+
+  // Opens in its own window (see main.ts's openNoteInNewWindow/createWindow) rather than
+  // replacing the current one, so clicking a link to another note doesn't lose your place in
+  // the note you clicked it from.
+  const handleOpenNoteLink = useCallback((filePath: string) => {
+    void window.mdnote.openNoteInNewWindow(filePath);
   }, []);
 
   const handleNewNote = useCallback(async () => {
@@ -475,10 +492,22 @@ export function App() {
         )}
       </aside>
       <main className="notegpt-main">
-        {adapter && selectedFilePath ? (
-          <EditorShell key={`${selectedFilePath}:${reloadToken}`} storage={adapter} noteId={selectedFilePath} />
+        {selectedFilePath ? (
+          <EditorShell
+            key={`${selectedFilePath}:${reloadToken}`}
+            storage={adapter ?? pathAdapter}
+            noteId={selectedFilePath}
+            onOpenNoteLink={handleOpenNoteLink}
+            onPickNoteLink={window.mdnote.pickMdnoteFile}
+          />
         ) : showingWelcome && welcomeFilePath ? (
-          <EditorShell key="welcome" storage={welcomeAdapter} noteId={welcomeFilePath} initialMode="view" />
+          <EditorShell
+            key="welcome"
+            storage={pathAdapter}
+            noteId={welcomeFilePath}
+            initialMode="view"
+            onOpenNoteLink={handleOpenNoteLink}
+          />
         ) : (
           <div style={{ padding: 24, color: "#888" }}>
             {folderPath ? "Select or create a note." : "Open a folder to get started."}

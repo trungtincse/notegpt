@@ -6,6 +6,7 @@ import {
   ensureMarkdownElements,
   isMarkdownElementId,
   parseMarkdownElementId,
+  parseNoteLink,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   type AnnotationScene,
   type MarkdownBlock,
@@ -41,6 +42,11 @@ export interface AnnotationOverlayProps {
    * in dev mode — fires before the scene has even left Excalidraw's own "Loading scene…"
    * placeholder, exporting a PDF with no visible text. */
   onReady?: () => void;
+  /** Called instead of the browser's default link-open when a clicked element's link is one of
+   * our internal note links (see buildNoteLink/parseNoteLink) — receives the target's absolute
+   * .mdnote file path. Omitted (falls back to opening as a real URL, which will just fail to
+   * navigate) in contexts with no notion of "another note to switch to", e.g. PrintView. */
+  onOpenNoteLink?: (filePath: string) => void;
 }
 
 const CHANGE_DEBOUNCE_MS = 400;
@@ -116,6 +122,7 @@ export function AnnotationOverlay({
   viewMode = false,
   centerOnMount = true,
   onReady,
+  onOpenNoteLink,
 }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
@@ -362,11 +369,19 @@ export function AnnotationOverlay({
             />
           );
         }}
-        // The markdown container's `link` is a placeholder, never a real URL (see
-        // ensureMarkdownElements) — without this, clicking its hyperlink affordance
-        // would try to open "notegpt:markdown" as a real link and fail.
         onLinkOpen={(element, event) => {
-          if (isMarkdownElementId(element.id)) event.preventDefault();
+          // The markdown container's `link` is a placeholder, never a real URL (see
+          // ensureMarkdownElements) — without this, clicking its hyperlink affordance
+          // would try to open "notegpt:markdown" as a real link and fail.
+          if (isMarkdownElementId(element.id)) {
+            event.preventDefault();
+            return;
+          }
+          const notePath = parseNoteLink(element.link);
+          if (notePath) {
+            event.preventDefault();
+            onOpenNoteLink?.(notePath);
+          }
         }}
         // See the paste-correction block in handleExcalidrawChange for why this only sets a
         // flag instead of touching appState/elements here.

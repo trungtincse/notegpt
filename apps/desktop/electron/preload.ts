@@ -22,6 +22,7 @@ export const mdnoteApi = {
   getHasSeenWelcome: (): Promise<boolean> => ipcRenderer.invoke("mdnote:getHasSeenWelcome"),
   markWelcomeSeen: (): Promise<void> => ipcRenderer.invoke("mdnote:markWelcomeSeen"),
   ensureWelcomeNoteFile: (): Promise<string> => ipcRenderer.invoke("mdnote:ensureWelcomeNoteFile"),
+  openNoteInNewWindow: (filePath: string): Promise<void> => ipcRenderer.invoke("mdnote:openNoteInNewWindow", filePath),
   exportNotePdf: (folderPath: string, filePath: string, title: string): Promise<string | null> =>
     ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
   notifyPrintReady: (contentHeight: number): void => ipcRenderer.send("mdnote:print-ready", contentHeight),

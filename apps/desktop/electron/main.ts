@@ -19,11 +19,14 @@ const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow(): void {
+// Shared by the main window and any note-link-opened windows (see openNoteInNewWindow) — the
+// only difference between them is which note, if any, gets auto-selected on load, passed via
+// a `?openNote=` query param the renderer reads on mount (see the effect in App.tsx).
+function createWindow(openNotePath?: string): BrowserWindow {
   // screen can only be used once the app is ready, so this is read here
   // (createWindow always runs inside app.whenReady()) rather than at module load.
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width,
     height,
     show: false,
@@ -36,31 +39,39 @@ function createWindow(): void {
       sandbox: false,
     },
   });
-  mainWindow.webContents.on('before-input-event', (event, input) => {
+  win.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && input.key === 'F12') {
-      mainWindow?.webContents.toggleDevTools();
+      win.webContents.toggleDevTools();
       event.preventDefault();
     }
-  }); mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+  });
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
     console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`);
   });
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
     console.log(`[did-fail-load] ${errorCode} ${errorDescription}`);
   });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+  win.webContents.on("render-process-gone", (_event, details) => {
     console.log(`[render-process-gone] ${JSON.stringify(details)}`);
   });
 
   if (isDev && rendererDevUrl) {
-    void mainWindow.loadURL(rendererDevUrl);
+    const url = new URL(rendererDevUrl);
+    if (openNotePath) url.searchParams.set("openNote", openNotePath);
+    void win.loadURL(url.toString());
   } else {
-    void mainWindow.loadFile(rendererIndexPath);
+    void win.loadFile(rendererIndexPath, openNotePath ? { search: `openNote=${encodeURIComponent(openNotePath)}` } : undefined);
   }
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
+  win.once("ready-to-show", () => {
+    win.show();
   });
 
+  return win;
+}
+
+function createMainWindow(): void {
+  mainWindow = createWindow();
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -84,13 +95,13 @@ function buildMenu(): void {
 }
 
 app.whenReady().then(() => {
-  registerFileHandlers(() => mainWindow);
+  registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();
-  createWindow();
+  createMainWindow();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
 

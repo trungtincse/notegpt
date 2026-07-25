@@ -1,22 +1,29 @@
-import { FONT_FAMILY } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, FONT_FAMILY } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ToolType } from "@excalidraw/excalidraw/types";
+import { buildNoteLink, parseNoteLink } from "@notegpt/core";
 import {
+  ArrowRight,
   Eraser,
   Hand,
   Highlighter as HighlighterIcon,
   Image as ImageIcon,
   LassoSelect,
+  Link as LinkIcon,
   type LucideIcon,
   Pencil,
   Trash2,
   Type as TextIcon,
   Undo2,
 } from "lucide-react";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 export interface ToolbarProps {
   excalidrawApiRef: RefObject<ExcalidrawImperativeAPI | null>;
+  /** Opens a native file picker for another .mdnote file, returning its absolute path (or null
+   * if canceled). Desktop-only, so omitted (hiding the "pick another note" option) in contexts
+   * without one, e.g. a future web build. */
+  onPickNoteLink?: () => Promise<string | null>;
 }
 
 const HIGHLIGHT_COLOR = "#ffd43b";
@@ -40,11 +47,12 @@ const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", BLACK_SWATCH
 // activateHighlighter) renders between Image and Eraser, so it's split out of this
 // list rather than appended after it.
 const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIcon }> = [
-  { type: "hand", label: "Hand", Icon: Hand },
-  { type: "selection", label: "Select", Icon: LassoSelect },
-  { type: "freedraw", label: "Pen", Icon: Pencil },
-  { type: "text", label: "Text", Icon: TextIcon },
-  { type: "image", label: "Image", Icon: ImageIcon },
+  { type: "hand", label: "F1 - Hand", Icon: Hand },
+  { type: "selection", label: "F2 - Select", Icon: LassoSelect },
+  { type: "freedraw", label: "F3 - Pen", Icon: Pencil },
+  { type: "arrow", label: "F4 - Arrow", Icon: ArrowRight },
+  { type: "text", label: "F5 - Text", Icon: TextIcon },
+  { type: "image", label: "F6 - Image", Icon: ImageIcon },
 ];
 
 /** Excalidraw's imperative API has no undo/delete methods, only `history.clear()`
@@ -58,9 +66,22 @@ function dispatchToExcalidraw(key: string, options: KeyboardEventInit = {}) {
   container.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options }));
 }
 
-export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
+export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
   const [activeTool, setActiveTool] = useState<ToolType | "highlighter">("hand");
   const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
+  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
+  const [linkDraft, setLinkDraft] = useState("");
+  const [linkTargetId, setLinkTargetId] = useState<string | null>(null);
+  // Set when the selected element's current link is one of our internal note links, so the
+  // popover can show what it's currently pointing at instead of a raw encoded URL.
+  const [linkTargetNotePath, setLinkTargetNotePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!linkPopoverOpen) return;
+    const close = () => setLinkPopoverOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [linkPopoverOpen]);
 
   // Hand is the default tool the moment the Annotation tab opens — panning around a note
   // should never accidentally start a drawing/selection gesture. Toolbar only ever mounts
@@ -112,6 +133,77 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
     excalidrawApiRef.current?.updateScene({ appState: { currentItemStrokeColor: color } });
   };
 
+  const openLinkPopover = () => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const appState = api.getAppState();
+    const selectedIds = Object.keys(appState.selectedElementIds).filter((id) => appState.selectedElementIds[id]);
+    if (selectedIds.length !== 1) return;
+    const target = api.getSceneElements().find((el) => el.id === selectedIds[0]);
+    if (!target) return;
+    const internalPath = parseNoteLink(target.link);
+    setLinkTargetId(target.id);
+    setLinkTargetNotePath(internalPath);
+    setLinkDraft(internalPath ? "" : (target.link ?? ""));
+    setLinkPopoverOpen(true);
+  };
+
+  const applyLink = (link: string | null) => {
+    const api = excalidrawApiRef.current;
+    if (!api || !linkTargetId) return;
+    const elements = api.getSceneElements();
+    const updated = elements.map((el) => (el.id === linkTargetId ? { ...el, link } : el));
+    api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.NEVER });
+  };
+
+  const commitUrlLink = () => {
+    applyLink(linkDraft.trim() || null);
+    setLinkPopoverOpen(false);
+  };
+
+  const handlePickNoteLink = async () => {
+    if (!onPickNoteLink) return;
+    const path = await onPickNoteLink();
+    if (!path) return;
+    applyLink(buildNoteLink(path));
+    setLinkPopoverOpen(false);
+  };
+
+  const clearLink = () => {
+    applyLink(null);
+    setLinkPopoverOpen(false);
+  };
+
+  // F1–F8 mirror the toolbar's own left-to-right button order (Hand through Eraser) as quick
+  // keyboard shortcuts — Link is skipped (it needs a single element already selected, so it
+  // doesn't work as a plain toggle-tool shortcut the way the others do), so Eraser takes F8
+  // instead of F9. Kept in a ref (rebuilt every render) rather than as a useCallback with a big
+  // dependency list, so the listener below can subscribe once on mount instead of tearing
+  // down/re-adding on every state change, while still always calling the latest closures
+  // instead of stale ones from the first render.
+  const keyActionsRef = useRef<Record<string, () => void>>({});
+  keyActionsRef.current = {
+    F1: () => selectTool("hand"),
+    F2: () => selectTool("selection"),
+    F3: () => selectTool("freedraw"),
+    F4: () => selectTool("arrow"),
+    F5: () => selectTool("text"),
+    F6: () => selectTool("image"),
+    F7: () => activateHighlighter(),
+    F8: () => selectTool("eraser"),
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const action = keyActionsRef.current[event.key];
+      if (!action) return;
+      event.preventDefault();
+      action();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <div className="notegpt-toolbar">
       {DRAW_TOOLS.map(({ type, label, Icon }) => (
@@ -128,16 +220,67 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
       ))}
       <button
         type="button"
-        title="Highlighter"
+        title="F7 - Highlighter"
         aria-label="Highlighter"
         className={activeTool === "highlighter" ? "active" : ""}
         onClick={activateHighlighter}
       >
         <HighlighterIcon size={ICON_SIZE} />
       </button>
+
       <button
         type="button"
-        title="Eraser"
+        title="Add link (select one element first)"
+        aria-label="Add link"
+        onClick={(e) => {
+          e.stopPropagation();
+          openLinkPopover();
+        }}
+      >
+        <LinkIcon size={ICON_SIZE} />
+      </button>
+
+      {linkPopoverOpen && (
+        <div className="notegpt-link-popover" onClick={(e) => e.stopPropagation()}>
+          {linkTargetNotePath && (
+            <div className="notegpt-link-popover-current" title={linkTargetNotePath}>
+              Linked to note: {linkTargetNotePath}
+            </div>
+          )}
+          <input
+            type="text"
+            className="notegpt-link-popover-input"
+            placeholder="https://..."
+            value={linkDraft}
+            autoFocus
+            onChange={(e) => setLinkDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitUrlLink();
+              if (e.key === "Escape") setLinkPopoverOpen(false);
+            }}
+          />
+          {onPickNoteLink && (
+            <button type="button" className="notegpt-link-popover-pick-note" onClick={() => void handlePickNoteLink()}>
+              Choose another note…
+            </button>
+          )}
+          <div className="notegpt-link-popover-actions">
+            <button type="button" className="notegpt-link-popover-btn danger" onClick={clearLink}>
+              Remove link
+            </button>
+            <button type="button" className="notegpt-link-popover-btn" onClick={() => setLinkPopoverOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="notegpt-link-popover-btn primary" onClick={commitUrlLink}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        title="F8 - Eraser"
         aria-label="Eraser"
         className={activeTool === "eraser" ? "active" : ""}
         onClick={() => selectTool("eraser")}

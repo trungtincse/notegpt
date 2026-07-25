@@ -67,7 +67,7 @@ async function uniqueFilePath(folderPath: string, title: string, excludePath?: s
   return candidate;
 }
 
-export function registerFileHandlers(getWindow: () => BrowserWindow | null): void {
+export function registerFileHandlers(getWindow: () => BrowserWindow | null, openNoteInNewWindow: (filePath: string) => void): void {
   ipcMain.handle("mdnote:pickFolder", async () => {
     const win = getWindow();
     if (!win) return null;
@@ -81,9 +81,11 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
   ipcMain.handle("mdnote:pickMdnoteFile", async () => {
     const win = getWindow();
     if (!win) return null;
+    const lastFolder = await getLastFolder();
     const result = await dialog.showOpenDialog(win, {
       properties: ["openFile"],
       filters: [{ name: "Markdown Note", extensions: ["mdnote"] }],
+      ...(lastFolder ? { defaultPath: lastFolder } : {}),
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
@@ -171,6 +173,13 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
 
   ipcMain.handle("mdnote:getHasSeenWelcome", async (): Promise<boolean> => getHasSeenWelcome());
   ipcMain.handle("mdnote:markWelcomeSeen", async (): Promise<void> => markWelcomeSeen());
+
+  // Clicking an in-note link to another note (see AnnotationOverlay's onLinkOpen /
+  // buildNoteLink) opens it in its own window rather than replacing the current one, so both
+  // notes stay visible/editable side by side.
+  ipcMain.handle("mdnote:openNoteInNewWindow", async (_event, filePath: string): Promise<void> => {
+    openNoteInNewWindow(filePath);
+  });
 
   // Copies the bundled first-launch note (a real, hand-editable .mdnote file authored in
   // apps/desktop/resources/) into userData the first time it's needed, so edits — including

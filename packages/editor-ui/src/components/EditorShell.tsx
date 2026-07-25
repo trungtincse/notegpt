@@ -16,6 +16,10 @@ export interface EditorShellProps {
   /** Which of the three tabs is showing first. Defaults to "markdown"; callers that open a
    * note purely for reading (e.g. a bundled first-launch intro note) can start on "view". */
   initialMode?: ShellMode;
+  /** See AnnotationOverlayProps.onOpenNoteLink. */
+  onOpenNoteLink?: (filePath: string) => void;
+  /** See ToolbarProps.onPickNoteLink. */
+  onPickNoteLink?: () => Promise<string | null>;
 }
 
 /**
@@ -28,7 +32,7 @@ export interface EditorShellProps {
  * enabled — Excalidraw's own camera provides pan/zoom for both. A header
  * switcher moves between the three.
  */
-export function EditorShell({ storage, noteId, initialMode = "markdown" }: EditorShellProps) {
+export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenNoteLink, onPickNoteLink }: EditorShellProps) {
   const { note, saveStatus, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
     useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
@@ -221,7 +225,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown" }: Edito
         )}
         {(mode === "annotation" || mode === "view") && (
           <div className="notegpt-annotate-pane">
-            {mode === "annotation" && <Toolbar excalidrawApiRef={excalidrawApiRef} />}
+            {mode === "annotation" && <Toolbar excalidrawApiRef={excalidrawApiRef} onPickNoteLink={onPickNoteLink} />}
             <div className="notegpt-markdown-pane">
               {/* Backfills a canvas embeddable for any block that doesn't have one yet
                   (new blocks added via the "+ Add note" button above, since that button
@@ -237,6 +241,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown" }: Edito
                 scene={note.annotation}
                 onChange={updateScene}
                 viewMode={mode === "view"}
+                onOpenNoteLink={onOpenNoteLink}
               />
             </div>
           </div>

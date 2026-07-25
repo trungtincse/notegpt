@@ -8,6 +8,11 @@
         "id": "welcome-tools-export",
         "markdown": "# Công cụ vẽ (tab Annotation)\n\n- Select / Hand — chọn, di chuyển, hoặc kéo canvas.\n- Pen — vẽ tay tự do.\n- Text / Image — chèn chữ hoặc ảnh.\n- Highlighter — tô sáng (vàng, mờ) lên nội dung, không xoá được chữ bên dưới.\n- Eraser — xoá nét vẽ/annotation. Sticky note (nội dung markdown) không thể bị Eraser xoá nhầm.\n- Chọn màu và độ dày nét ở giữa toolbar.\n- Undo và Delete selected ở cuối toolbar.\n\n## Xuất PDF\nMenu export sẽ xuất toàn bộ note (mọi sticky note + mọi nét vẽ) ra 1 file PDF vừa đúng 1 trang, không bị cắt hay chia trang.",
         "title": "Công cụ vẽ & Export"
+      },
+      {
+        "id": "welcome-shortcuts",
+        "title": "Phím tắt & Mẹo dùng",
+        "markdown": "# Phím tắt (khi ở tab Annotation)\n\nTừ trái sang phải trên toolbar, mỗi công cụ có phím tắt riêng:\n\n- **F1** — Hand (di chuyển canvas)\n- **F2** — Select (chọn/khoanh vùng)\n- **F3** — Pen (vẽ tay tự do)\n- **F4** — Arrow (vẽ mũi tên)\n- **F5** — Text (chèn chữ)\n- **F6** — Image (chèn ảnh)\n- **F7** — Highlighter (tô sáng)\n- **F8** — Eraser (xoá nét vẽ)\n\nNgoài ra:\n- **Ctrl/Cmd + Z** — Undo\n- **Delete** — xoá phần tử đang chọn\n\n## Paste text từ bên ngoài\n\nCopy text từ trình duyệt, ChatGPT, hay bất kỳ đâu rồi **Ctrl+V** thẳng vào canvas (tab Annotation) — text sẽ tự động hiện với font chữ thường (không phải font viết tay) và màu đen, không phụ thuộc màu bạn đang vẽ.\n\n## Zoom in/out\n\nGiữ **Ctrl** rồi cuộn chuột giữa (scroll wheel) để zoom in/out canvas, không cần đổi công cụ."
       }
     ],
     "annotation": {
