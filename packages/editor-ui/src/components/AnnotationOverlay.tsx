@@ -23,11 +23,14 @@ export interface AnnotationOverlayProps {
   /** Read-only: disables editing via Excalidraw's own view mode. Panning/zooming
    * (Excalidraw's native camera) works the same in both modes. */
   viewMode?: boolean;
-  /** Recenters the camera on the markdown blocks once the scene has mounted.
-   * Off by default for callers (PrintView) that already compute their own exact
+  /** Positions the camera on the markdown blocks once the scene has mounted, but only for
+   * a note that has never had a camera position saved (`scene.appState.scrollX` is still
+   * unset) — once the user has panned/zoomed at all, that gets persisted (see
+   * PERSISTED_APP_STATE_KEYS below) and is respected on every later open instead. Off
+   * entirely for callers (PrintView) that already compute their own exact
    * scrollX/scrollY/zoom to fit all elements into a tightly-sized page — auto-
-   * centering on just the markdown blocks there would fight that positioning and
-   * push content outside the page's fixed bounds. */
+   * positioning on just the markdown blocks there would fight that and push content
+   * outside the page's fixed bounds. */
   centerOnMount?: boolean;
 }
 
@@ -111,6 +114,10 @@ export function AnnotationOverlay({
 
   const markdownById = useMemo(() => new Map(markdownBlocks.map((b) => [b.id, b.markdown])), [markdownBlocks]);
 
+  // A note that's already had a camera position saved (from a previous pan/zoom) keeps it
+  // across opens instead of being auto-positioned again — see the centerOnMount prop doc.
+  const shouldAutoCenter = centerOnMount && scene.appState.scrollX === undefined;
+
   const debouncedOnChange = useRef(
     debounce((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>);
@@ -167,7 +174,7 @@ export function AnnotationOverlay({
   // measurements underneath still happen normally while hidden. Callers that opt out of
   // centering entirely (PrintView, centerOnMount=false) have nothing to wait for, so they
   // start already revealed.
-  const [isPositioned, setIsPositioned] = useState(!centerOnMount);
+  const [isPositioned, setIsPositioned] = useState(!shouldAutoCenter);
 
   // Horizontally centers the markdown blocks, but vertically anchors their top edge near
   // the top of the viewport (with a small padding) instead of vertically centering them —
@@ -209,7 +216,7 @@ export function AnnotationOverlay({
         api.updateScene({ elements: nextElements, captureUpdate: CaptureUpdateAction.NEVER });
       }
 
-      if (!centerOnMount || hasCenteredRef.current) return;
+      if (!shouldAutoCenter || hasCenteredRef.current) return;
       const pending = pendingBlockIdsRef.current;
       if (!pending) return;
       const blockId = parseMarkdownElementId(elementId);
@@ -219,7 +226,7 @@ export function AnnotationOverlay({
         centerOnElements(api, nextElements.filter((el) => isMarkdownElementId(el.id)));
       }
     },
-    [apiRef, centerOnMount, centerOnElements]
+    [apiRef, shouldAutoCenter, centerOnElements]
   );
 
   // Seeds the pending-block set at mount (only ever run once — deliberately empty deps —
@@ -244,7 +251,7 @@ export function AnnotationOverlay({
   // (real or still-placeholder) each block happens to have at that moment. Kept short so an
   // off-screen block doesn't stall the visible ones behind a multi-second delay.
   useEffect(() => {
-    if (!centerOnMount) return;
+    if (!shouldAutoCenter) return;
 
     const blockIds = markdownBlocks.map((b) => b.id);
     pendingBlockIdsRef.current = new Set(blockIds);
