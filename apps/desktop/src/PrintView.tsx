@@ -1,6 +1,6 @@
 import { ensureMarkdownElement, getSceneBounds, type Note } from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
 
 // Padding (px) around the scene's content bounds so nothing sits flush against the page edge.
@@ -17,6 +17,7 @@ function waitTwoAnimationFrames(): Promise<void> {
 
 export function PrintView({ folderPath, filePath }: { folderPath: string; filePath: string }) {
   const [note, setNote] = useState<Note | null>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +34,13 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
 
   useEffect(() => {
     if (!note) return;
-    void waitTwoAnimationFrames().then(() => window.mdnote.notifyPrintReady());
+    void waitTwoAnimationFrames().then(() => {
+      // The title's height isn't part of the scene bounds used to size the page
+      // (see printScene below), so the real page height — including it — has to
+      // come from measuring the actual rendered DOM, not scene math.
+      const height = pageRef.current?.getBoundingClientRect().height ?? 0;
+      window.mdnote.notifyPrintReady(height);
+    });
   }, [note]);
 
   // Excalidraw is a fixed-viewport camera, not an auto-growing document — unlike the
@@ -62,10 +69,10 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
   if (!note || !printScene) return null;
 
   return (
-    <div className="notegpt-print-page">
+    <div className="notegpt-print-page" ref={pageRef}>
       <h1 className="notegpt-print-title">{note.title}</h1>
       <div style={{ position: "relative", width: printScene.width, height: printScene.height }}>
-        <AnnotationOverlay markdown={note.markdown} scene={printScene.scene} onChange={() => {}} viewMode />
+        <AnnotationOverlay markdown={note.markdown} scene={printScene.scene} onChange={() => {}} viewMode centerOnMount={false} />
       </div>
     </div>
   );

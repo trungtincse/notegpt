@@ -11,11 +11,10 @@ const CONTENT_PADDING = 40;
 // Chromium's print pipeline lays out HTML at the window's actual CSS pixel width and, by
 // default, does not reliably shrink content wider than the physical page to fit it — it
 // clips instead. Rather than fight a fixed A4 width against our (sometimes wider) annotation
-// canvas, make the PDF page exactly as wide as the content (at the standard 96 CSS px/in),
-// with zero side margins, so nothing needs to be scaled and nothing can be clipped
-// horizontally. Page height stays a fixed, tall value so tall notes still paginate normally.
+// canvas, make the PDF page exactly as wide (and, further down, exactly as tall) as the
+// content itself (at the standard 96 CSS px/in), with zero side margins, so nothing needs
+// to be scaled or clipped and the whole note always prints as a single page.
 const CSS_PX_PER_INCH = 96;
-const PAGE_HEIGHT_INCHES = 11.69; // A4 height
 
 /**
  * The print width is sized to exactly fit the scene's own content bounds — the markdown
@@ -47,23 +46,24 @@ function buildPrintUrl(folderPath: string, filePath: string, options: ExportPdfO
   return { query };
 }
 
-/** Waits for the hidden print window to signal it has painted, racing a safety timeout —
- * whichever wins tears down the other so a stale listener/timer can't fire against a
- * future, unrelated export. */
-function waitForPrintReady(): Promise<void> {
+/** Waits for the hidden print window to signal it has painted (reporting its actual
+ * rendered content height), racing a safety timeout — whichever wins tears down the
+ * other so a stale listener/timer can't fire against a future, unrelated export.
+ * Resolves to `null` on timeout, since there's no measured height to fall back on. */
+function waitForPrintReady(): Promise<number | null> {
   return new Promise((resolve) => {
     let settled = false;
-    const onReady = () => {
+    const onReady = (_event: Electron.IpcMainEvent, contentHeight: number) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve();
+      resolve(contentHeight);
     };
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       ipcMain.removeListener("mdnote:print-ready", onReady);
-      resolve();
+      resolve(null);
     }, PRINT_READY_TIMEOUT_MS);
     ipcMain.once("mdnote:print-ready", onReady);
   });
@@ -114,12 +114,19 @@ export function registerExportHandlers(getWindow: () => BrowserWindow | null, op
           await printWin.loadFile(options.rendererIndexPath, { query });
         }
 
-        await waitForPrintReady();
+        const contentHeight = await waitForPrintReady();
+        const marginTopIn = 0.4;
+        const marginBottomIn = 0.4;
+        // Page height matches the actual rendered content (title + scene) exactly,
+        // so the whole note prints as a single page instead of paginating at a
+        // fixed A4 height. Falls back to the print window's own height if the
+        // renderer never reported (timed out).
+        const pageHeightIn = (contentHeight ?? mainHeight) / CSS_PX_PER_INCH + marginTopIn + marginBottomIn;
 
         const pdfBuffer = await printWin.webContents.printToPDF({
           printBackground: true,
-          pageSize: { width: printWidth / CSS_PX_PER_INCH, height: PAGE_HEIGHT_INCHES },
-          margins: { top: 0.4, bottom: 0.4, left: 0, right: 0 },
+          pageSize: { width: printWidth / CSS_PX_PER_INCH, height: pageHeightIn },
+          margins: { top: marginTopIn, bottom: marginBottomIn, left: 0, right: 0 },
         });
         await fs.writeFile(saveResult.filePath, pdfBuffer);
         return saveResult.filePath;

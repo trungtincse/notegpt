@@ -16,6 +16,12 @@ export interface AnnotationOverlayProps {
   /** Read-only: disables editing via Excalidraw's own view mode. Panning/zooming
    * (Excalidraw's native camera) works the same in both modes. */
   viewMode?: boolean;
+  /** Recenters the camera on the markdown column once the scene has mounted.
+   * Off by default for callers (PrintView) that already compute their own exact
+   * scrollX/scrollY/zoom to fit all elements into a tightly-sized page — auto-
+   * centering on just the markdown column there would fight that positioning and
+   * push content outside the page's fixed bounds. */
+  centerOnMount?: boolean;
 }
 
 const CHANGE_DEBOUNCE_MS = 400;
@@ -69,7 +75,7 @@ function MarkdownEmbeddable({ markdown, onHeightChange }: { markdown: string; on
   );
 }
 
-export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalApiRef, viewMode = false }: AnnotationOverlayProps) {
+export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalApiRef, viewMode = false, centerOnMount = true }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
@@ -117,11 +123,12 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
       appState: { activeEmbeddable: { element: markdownElement, state: "active" } },
       captureUpdate: CaptureUpdateAction.NEVER,
     });
+    if (!centerOnMount) return;
     // Centers the camera on the markdown column specifically — centering on
     // every scene element (via initialData.scrollToContent) skews off-center
     // as soon as an annotation sits outside the column's own bounds.
     api.scrollToContent(markdownElement, { fitToViewport: false, animate: false });
-  }, [apiRef]);
+  }, [apiRef, centerOnMount]);
 
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
