@@ -37,3 +37,11 @@ export async function removeRecentFile(filePath: string): Promise<void> {
     "utf-8"
   );
 }
+
+/** Repoints a recent entry to a note's new file path (in place, preserving order) after a rename. */
+export async function renameRecentFile(oldPath: string, newPath: string): Promise<void> {
+  const existing = await getRecentFiles();
+  if (!existing.includes(oldPath)) return;
+  const next = existing.map((entry) => (entry === oldPath ? newPath : entry));
+  await fs.writeFile(recentFilesPath(), JSON.stringify(next, null, 2), "utf-8");
+}

@@ -12,6 +12,8 @@ export const mdnoteApi = {
   createNote: (folderPath: string, title: string): Promise<{ filePath: string; note: Note }> =>
     ipcRenderer.invoke("mdnote:createNote", folderPath, title),
   deleteNote: (filePath: string): Promise<void> => ipcRenderer.invoke("mdnote:deleteNote", filePath),
+  renameNoteFile: (filePath: string, title: string): Promise<string> =>
+    ipcRenderer.invoke("mdnote:renameNoteFile", filePath, title),
   getRecentFiles: (): Promise<string[]> => ipcRenderer.invoke("mdnote:getRecentFiles"),
   addRecentFile: (filePath: string): Promise<void> => ipcRenderer.invoke("mdnote:addRecentFile", filePath),
   getPinnedFiles: (): Promise<string[]> => ipcRenderer.invoke("mdnote:getPinnedFiles"),

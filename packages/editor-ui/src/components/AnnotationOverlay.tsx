@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
-import { DEFAULT_STROKE_COLOR } from "./Toolbar.js";
+import { DEFAULT_STROKE_COLOR, MIN_STROKE_WIDTH } from "./Toolbar.js";
 
 export interface AnnotationOverlayProps {
   markdownBlocks: MarkdownBlock[];
@@ -341,10 +341,14 @@ export function AnnotationOverlay({
         }}
         initialData={{
           elements: ensureMarkdownElements(scene.elements, markdownBlocks.map((b) => b.id)) as ExcalidrawElement[],
-          // Falls back to the toolbar's default swatch when the scene has never
-          // set a stroke color (brand-new note); an already-persisted value
-          // (the user picked a color before) always wins.
-          appState: { currentItemStrokeColor: DEFAULT_STROKE_COLOR, ...scene.appState } as Partial<AppState>,
+          // Falls back to the toolbar's default swatch/min stroke width when the scene has
+          // never set them (brand-new note); an already-persisted value (the user changed it
+          // before) always wins.
+          appState: {
+            currentItemStrokeColor: DEFAULT_STROKE_COLOR,
+            currentItemStrokeWidth: MIN_STROKE_WIDTH,
+            ...scene.appState,
+          } as Partial<AppState>,
           files: scene.files as BinaryFiles,
         }}
         onChange={viewMode ? undefined : handleExcalidrawChange}

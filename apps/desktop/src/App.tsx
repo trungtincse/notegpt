@@ -254,10 +254,14 @@ export function App() {
     setRenamingPath(null);
     setRenamingSectionId(null);
     if (!path || !adapter || !title) return;
-    await adapter.renameNote(path, title);
+    const newPath = await adapter.renameNote(path, title);
     await refreshNotes();
-    if (path === selectedFilePath) setReloadToken((t) => t + 1);
-  }, [renamingPath, renameDraft, adapter, refreshNotes, selectedFilePath]);
+    await refreshPinnedAndRecent();
+    if (path === selectedFilePath) {
+      setSelectedFilePath(newPath);
+      setReloadToken((t) => t + 1);
+    }
+  }, [renamingPath, renameDraft, adapter, refreshNotes, refreshPinnedAndRecent, selectedFilePath]);
 
   const handleExportPdf = useCallback(
     (filePath: string, title: string) => {

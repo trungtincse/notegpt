@@ -1,9 +1,9 @@
 import { concatMarkdownBlocks, createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationScene, type Note } from "@notegpt/core";
 import { app, dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
-import { extname, join } from "node:path";
-import { getPinnedFiles, removePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
-import { addRecentFile, getRecentFiles, removeRecentFile } from "./recentFiles.js";
+import { dirname, extname, join } from "node:path";
+import { getPinnedFiles, removePinnedFile, renamePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
+import { addRecentFile, getRecentFiles, removeRecentFile, renameRecentFile } from "./recentFiles.js";
 import { getHasSeenWelcome, getLastFolder, markWelcomeSeen, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
@@ -37,20 +37,29 @@ function slugify(title: string): string {
   const slug = title
     .trim()
     .toLowerCase()
+    // "đ" doesn't decompose under NFD (it's its own Latin letter, not "d" + a combining
+    // mark), so it needs an explicit swap before the NFD strip below handles the rest of
+    // Vietnamese's diacritics (as well as other accented Latin scripts).
+    .replace(/đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
   return slug || "untitled";
 }
 
-async function uniqueFilePath(folderPath: string, title: string): Promise<string> {
+/** `excludePath`, when given, is a path allowed to already exist without counting as a
+ * collision — used when renaming a file to its own unchanged (or case-only-changed) slug. */
+async function uniqueFilePath(folderPath: string, title: string, excludePath?: string): Promise<string> {
   const base = slugify(title);
   let candidate = join(folderPath, `${base}${MDNOTE_EXT}`);
   let suffix = 1;
   while (
-    await fs
+    candidate !== excludePath &&
+    (await fs
       .access(candidate)
       .then(() => true)
-      .catch(() => false)
+      .catch(() => false))
   ) {
     candidate = join(folderPath, `${base}-${suffix}${MDNOTE_EXT}`);
     suffix += 1;
@@ -126,6 +135,25 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
       return { filePath, note };
     }
   );
+
+  // Renames a note on disk to match its new title (not just the `title` field inside the file),
+  // so the file the user sees in a normal file browser stays in sync with what's shown in-app.
+  // Keeps whatever unique-suffix scheme createNote uses, and repoints pinned/recent entries so
+  // renaming doesn't silently unpin or drop a note from Recents.
+  ipcMain.handle("mdnote:renameNoteFile", async (_event, filePath: string, title: string): Promise<string> => {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const note = deserializeMdNote(raw);
+    const folderPath = dirname(filePath);
+    const newFilePath = await uniqueFilePath(folderPath, title, filePath);
+    const updated: Note = { ...note, title, updatedAt: new Date().toISOString() };
+    await fs.writeFile(newFilePath, serializeMdNote(updated), "utf-8");
+    if (newFilePath !== filePath) {
+      await fs.unlink(filePath);
+      await renamePinnedFile(filePath, newFilePath);
+      await renameRecentFile(filePath, newFilePath);
+    }
+    return newFilePath;
+  });
 
   ipcMain.handle("mdnote:deleteNote", async (_event, filePath: string): Promise<void> => {
     await fs.unlink(filePath);
