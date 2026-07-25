@@ -6,6 +6,7 @@ import { ensureMarkdownElement, MARKDOWN_ELEMENT_ID, MARKDOWN_TEXT_COLUMN_WIDTH,
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
+import { DEFAULT_STROKE_COLOR } from "./Toolbar.js";
 
 export interface AnnotationOverlayProps {
   markdown: string;
@@ -128,7 +129,10 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
         }}
         initialData={{
           elements: ensureMarkdownElement(scene.elements) as ExcalidrawElement[],
-          appState: scene.appState as Partial<AppState>,
+          // Falls back to the toolbar's default swatch when the scene has never
+          // set a stroke color (brand-new note); an already-persisted value
+          // (the user picked a color before) always wins.
+          appState: { currentItemStrokeColor: DEFAULT_STROKE_COLOR, ...scene.appState } as Partial<AppState>,
           files: scene.files as BinaryFiles,
           // Recenters the camera on the scene content (the markdown column, plus
           // any annotations) every time the overlay mounts, so it sits in the

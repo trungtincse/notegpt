@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, Menu } from "electron";
 import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
+import { screen } from "electron";
 
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");
@@ -11,9 +12,13 @@ const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
+  // screen can only be used once the app is ready, so this is read here
+  // (createWindow always runs inside app.whenReady()) rather than at module load.
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width,
+    height,
+    show: false,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -43,6 +48,10 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(rendererIndexPath);
   }
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
