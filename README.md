@@ -6,7 +6,7 @@
 
 # Chào mừng đến với NoteGPT
 
-**NoteGPT** là ứng dụng ghi chú được thiết kế để giúp bạn **lưu trữ, tổ chức và chú thích kiến thức** một cách trực quan. Ứng dụng đặc biệt phù hợp để lưu lại các câu trả lời từ ChatGPT, tài liệu kỹ thuật, bài viết hoặc bất kỳ nội dung nào ở định dạng **Markdown**.
+**NoteGPT** là ứng dụng ghi chú được thiết kế để giúp bạn **lưu trữ, tổ chức và chú thích kiến thức** một cách trực quan. Ứng dụng đặc biệt phù hợp để lưu lại các câu trả lời từ ChatGPT, tài liệu kỹ thuật, bài viết hoặc bất kỳ nội dung nào ở định dạng **Markdown**. 
 
 Không giống các ứng dụng ghi chú truyền thống, NoteGPT kết hợp **Markdown** và **Annotation** trong cùng một không gian làm việc. Bạn có thể vừa soạn thảo nội dung, vừa đánh dấu, khoanh vùng hoặc ghi chú trực tiếp lên nội dung đó mà không cần chuyển sang ứng dụng khác.
 
@@ -17,6 +17,8 @@ Không giống các ứng dụng ghi chú truyền thống, NoteGPT kết hợp 
 * ✏️ Đánh dấu, tô sáng, khoanh vùng và thêm chú thích trực tiếp lên nội dung để làm nổi bật những phần quan trọng.
 * 💡 Lưu lại các câu trả lời từ ChatGPT và bổ sung ghi chú cá nhân ngay trên cùng một tài liệu.
 * 📚 Xem lại toàn bộ ghi chú bất cứ lúc nào trong chế độ chỉ đọc.
+## Download
+Tải bản mới nhất cho Linux (`.deb`, AppImage) và Windows (`.exe`) ở **[Releases](https://github.com/trungtincse/notegpt/releases/latest)**. 
 
 ---
 
@@ -69,9 +71,7 @@ Trong chế độ này:
 4. Sử dụng **View** khi chỉ muốn đọc lại ghi chú.
 
 Hy vọng NoteGPT sẽ giúp bạn lưu giữ kiến thức hiệu quả hơn và biến những câu trả lời từ AI thành tài liệu cá nhân dễ tìm kiếm, dễ xem lại và dễ chia sẻ.
-## Download
 
-Tải bản mới nhất cho Linux (`.deb`, AppImage) và Windows (`.exe`) ở **[Releases](https://github.com/trungtincse/notegpt/releases/latest)**.
 
 
 
