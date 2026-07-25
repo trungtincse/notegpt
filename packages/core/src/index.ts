@@ -1,5 +1,6 @@
 export * from "./model/Note.js";
 export * from "./model/AnnotationScene.js";
+export * from "./model/YoutubeEmbed.js";
 export * from "./model/MdNoteFile.js";
 export * from "./model/StorageAdapter.js";
 export * from "./model/noteLink.js";

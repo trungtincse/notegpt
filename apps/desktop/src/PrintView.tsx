@@ -1,4 +1,4 @@
-import { ensureMarkdownElements, getSceneBounds, isVisiblyRendered, type Note } from "@notegpt/core";
+import { ensureMarkdownElements, getSceneBounds, isVisiblyRendered, replaceYoutubeEmbedsForPrint, type Note } from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
@@ -60,7 +60,10 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
   // scrolled to fit the *entire* scene, using the scene's own content bounds.
   const printScene = useMemo(() => {
     if (!note) return null;
-    const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
+    const rawElements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
+    // Swapped for static thumbnails only in this print copy — the live canvas (and its saved
+    // scene) keeps the real, playable embed; see replaceYoutubeEmbedsForPrint's own comment.
+    const { elements, files } = replaceYoutubeEmbedsForPrint(rawElements, note.annotation.files);
     // Sizing/positioning is based on only the *visible* elements — an invisible leftover
     // stroke (fully transparent stroke and fill, e.g. drawn with the wrong color mid-testing
     // and never cleaned up) still has real x/y/width/height and would otherwise stretch the
@@ -72,6 +75,7 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
       scene: {
         ...note.annotation,
         elements,
+        files,
         appState: {
           ...note.annotation.appState,
           scrollX: -minX + CONTENT_PADDING,

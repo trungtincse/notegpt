@@ -1,4 +1,13 @@
-import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, parseNoteLink, type Note } from "@notegpt/core";
+import {
+  deserializeMdNote,
+  ensureMarkdownElements,
+  extractYoutubeVideoId,
+  getSceneBounds,
+  getYoutubeWatchUrl,
+  isVisiblyRendered,
+  parseNoteLink,
+  type Note,
+} from "@notegpt/core";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { PDFDocument, PDFName, PDFString } from "pdf-lib";
@@ -77,12 +86,18 @@ function collectLinkRects(note: Note, titleBlockHeightPx: number): LinkRect[] {
   const rects: LinkRect[] = [];
   for (const el of elements as Array<{ isDeleted?: unknown; link?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown }>) {
     if (el.isDeleted || !isExternalLink(el.link)) continue;
+    // A YouTube embeddable's `link` is whatever URL shape produced it — often an `/embed/<id>`
+    // src pulled out of a pasted iframe snippet (see replaceYoutubeEmbedsForPrint, which swaps
+    // the visual for a thumbnail over this same rect) — normalized here to the normal watch
+    // page, which is what's actually worth clicking through to from the exported PDF.
+    const videoId = extractYoutubeVideoId(el.link);
+    const url = videoId !== null ? getYoutubeWatchUrl(videoId) : el.link;
     const x = typeof el.x === "number" ? el.x : 0;
     const y = typeof el.y === "number" ? el.y : 0;
     const width = typeof el.width === "number" ? el.width : 0;
     const height = typeof el.height === "number" ? el.height : 0;
     rects.push({
-      url: el.link,
+      url,
       xPx: x - minX + CONTENT_PADDING,
       yPx: y - minY + CONTENT_PADDING + titleBlockHeightPx,
       widthPx: width,
