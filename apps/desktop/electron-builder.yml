@@ -13,6 +13,7 @@ linux:
     - deb
   category: Office
   maintainer: notegpt
+  icon: build/icons
   artifactName: "${productName}-${version}-${arch}.${ext}"
 win:
   target:

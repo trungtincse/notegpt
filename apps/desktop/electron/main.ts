@@ -4,6 +4,14 @@ import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
 import { screen } from "electron";
 
+// Chromium's zygote/GPU process sandbox fails to spawn on some Linux kernels even when
+// chrome-sandbox is present and correctly permissioned (observed: "GPU process launch
+// failed", app never gets past a blank window) — must be set before app.whenReady(), and
+// as a command-line switch, not webPreferences.sandbox (that only controls the renderer's
+// own sandboxing, not the zygote/GPU process spawn that's actually failing). Safe here since
+// this app never loads untrusted remote web content.
+app.commandLine.appendSwitch("no-sandbox");
+
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");
 const rendererIndexPath = join(__dirname, "../renderer/index.html");
