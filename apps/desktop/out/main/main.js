@@ -1,19 +1,18 @@
 import { join, extname } from "node:path";
-import { ipcMain, dialog, BrowserWindow, app, Menu } from "electron";
-import { deserializeMdNote, ensureMarkdownElement, getSceneBounds, serializeMdNote, createBlankNote } from "@notegpt/core";
+import { ipcMain, dialog, BrowserWindow, app, Menu, screen } from "electron";
+import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, concatMarkdownBlocks, serializeMdNote, createBlankNote } from "@notegpt/core";
 import { promises } from "node:fs";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 const require2 = __cjs_mod__.createRequire(import.meta.url);
-const PRINT_READY_TIMEOUT_MS = 5e3;
+const PRINT_READY_TIMEOUT_MS = 8e3;
 const FALLBACK_WINDOW_HEIGHT = 800;
-const CONTENT_PADDING = 40;
+const CONTENT_PADDING = 150;
 const CSS_PX_PER_INCH = 96;
-const PAGE_HEIGHT_INCHES = 11.69;
 function getPrintWidth(note) {
-  const elements = ensureMarkdownElement(note.annotation.elements);
-  const { minX, maxX } = getSceneBounds(elements);
+  const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
+  const { minX, maxX } = getSceneBounds(elements.filter(isVisiblyRendered));
   return Math.ceil(maxX - minX) + CONTENT_PADDING * 2;
 }
 function buildPrintUrl(folderPath, filePath, options) {
@@ -28,17 +27,17 @@ function buildPrintUrl(folderPath, filePath, options) {
 function waitForPrintReady() {
   return new Promise((resolve) => {
     let settled = false;
-    const onReady = () => {
+    const onReady = (_event, contentHeight) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve();
+      resolve(contentHeight);
     };
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       ipcMain.removeListener("mdnote:print-ready", onReady);
-      resolve();
+      resolve(null);
     }, PRINT_READY_TIMEOUT_MS);
     ipcMain.once("mdnote:print-ready", onReady);
   });
@@ -83,11 +82,14 @@ function registerExportHandlers(getWindow, options) {
         } else {
           await printWin.loadFile(options.rendererIndexPath, { query });
         }
-        await waitForPrintReady();
+        const contentHeight = await waitForPrintReady();
+        const marginTopIn = 0.4;
+        const marginBottomIn = 0.4;
+        const pageHeightIn = (contentHeight ?? mainHeight) / CSS_PX_PER_INCH + marginTopIn + marginBottomIn;
         const pdfBuffer = await printWin.webContents.printToPDF({
           printBackground: true,
-          pageSize: { width: printWidth / CSS_PX_PER_INCH, height: PAGE_HEIGHT_INCHES },
-          margins: { top: 0.4, bottom: 0.4, left: 0, right: 0 }
+          pageSize: { width: printWidth / CSS_PX_PER_INCH, height: pageHeightIn },
+          margins: { top: marginTopIn, bottom: marginBottomIn, left: 0, right: 0 }
         });
         await promises.writeFile(saveResult.filePath, pdfBuffer);
         return saveResult.filePath;
@@ -181,6 +183,15 @@ async function setLastFolder(folderPath) {
   settings.lastFolder = folderPath;
   await promises.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
 }
+async function getHasSeenWelcome() {
+  const settings = await readSettings();
+  return settings.hasSeenWelcome === true;
+}
+async function markWelcomeSeen() {
+  const settings = await readSettings();
+  settings.hasSeenWelcome = true;
+  await promises.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
+}
 const MDNOTE_EXT = ".mdnote";
 function extractAnnotationText(scene) {
   return scene.elements.filter((element) => {
@@ -235,7 +246,7 @@ function registerFileHandlers(getWindow) {
         summaries.push({
           filePath,
           title: note.title,
-          markdown: note.markdown,
+          markdown: concatMarkdownBlocks(note.markdownBlocks),
           annotationText: extractAnnotationText(note.annotation),
           updatedAt: note.updatedAt
         });
@@ -274,16 +285,21 @@ function registerFileHandlers(getWindow) {
   ipcMain.handle("mdnote:getPinnedFiles", async () => getPinnedFiles());
   ipcMain.handle("mdnote:togglePinnedFile", async (_event, filePath) => togglePinnedFile(filePath));
   ipcMain.handle("mdnote:getLastFolder", async () => getLastFolder());
+  ipcMain.handle("mdnote:getHasSeenWelcome", async () => getHasSeenWelcome());
+  ipcMain.handle("mdnote:markWelcomeSeen", async () => markWelcomeSeen());
 }
+app.commandLine.appendSwitch("no-sandbox");
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");
 const rendererIndexPath = join(__dirname, "../renderer/index.html");
 const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 let mainWindow = null;
 function createWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width,
+    height,
+    show: false,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -313,6 +329,9 @@ function createWindow() {
   } else {
     void mainWindow.loadFile(rendererIndexPath);
   }
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

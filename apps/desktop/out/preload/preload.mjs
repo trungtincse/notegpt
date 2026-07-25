@@ -12,8 +12,10 @@ const mdnoteApi = {
   getPinnedFiles: () => ipcRenderer.invoke("mdnote:getPinnedFiles"),
   togglePinnedFile: (filePath) => ipcRenderer.invoke("mdnote:togglePinnedFile", filePath),
   getLastFolder: () => ipcRenderer.invoke("mdnote:getLastFolder"),
+  getHasSeenWelcome: () => ipcRenderer.invoke("mdnote:getHasSeenWelcome"),
+  markWelcomeSeen: () => ipcRenderer.invoke("mdnote:markWelcomeSeen"),
   exportNotePdf: (folderPath, filePath, title) => ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
-  notifyPrintReady: () => ipcRenderer.send("mdnote:print-ready"),
+  notifyPrintReady: (contentHeight) => ipcRenderer.send("mdnote:print-ready", contentHeight),
   onMenuOpenFolder: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("mdnote:menu-open-folder", listener);
