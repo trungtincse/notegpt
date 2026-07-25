@@ -53,6 +53,15 @@ body {
   background: #e6e6e7;
 }
 
+.notegpt-current-folder {
+  padding: 0 4px;
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .notegpt-new-note-form {
   display: flex;
   flex-direction: row;

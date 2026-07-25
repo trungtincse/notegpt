@@ -422,6 +422,11 @@ export function App() {
           <FolderOpen size={16} />
           Open Folder…
         </button>
+        {folderPath && (
+          <div className="notegpt-current-folder" title={folderPath}>
+            {folderPath}
+          </div>
+        )}
         <div className="notegpt-new-note-form">
           <input
             type="text"
