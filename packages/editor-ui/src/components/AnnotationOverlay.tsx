@@ -10,7 +10,7 @@ import {
   type AnnotationScene,
   type MarkdownBlock,
 } from "@notegpt/core";
-import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import { DEFAULT_STROKE_COLOR } from "./Toolbar.js";
@@ -32,6 +32,9 @@ export interface AnnotationOverlayProps {
 }
 
 const CHANGE_DEBOUNCE_MS = 400;
+
+/** Gap (scene px) kept above the markdown blocks' top edge when positioning the camera. */
+const TOP_ALIGN_PADDING = 40;
 
 /** Only these AppState fields are worth persisting; the rest is ephemeral UI/collab state. */
 const PERSISTED_APP_STATE_KEYS = [
@@ -157,7 +160,20 @@ export function AnnotationOverlay({
   const hasCenteredRef = useRef(false);
   const pendingBlockIdsRef = useRef<Set<string> | null>(null);
   const centerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Excalidraw's own default camera (wherever it happens to land before centering runs)
+  // is never shown — the overlay stays invisible until the correct position is set, so the
+  // user only ever sees the final centered state instead of a visible jump/flash between the
+  // two. `visibility: hidden` (not unmounting or display:none) so layout/ResizeObserver
+  // measurements underneath still happen normally while hidden. Callers that opt out of
+  // centering entirely (PrintView, centerOnMount=false) have nothing to wait for, so they
+  // start already revealed.
+  const [isPositioned, setIsPositioned] = useState(!centerOnMount);
 
+  // Horizontally centers the markdown blocks, but vertically anchors their top edge near
+  // the top of the viewport (with a small padding) instead of vertically centering them —
+  // `scrollToContent` centers on both axes, which looks fine horizontally (a row of cards)
+  // but leaves a huge, lopsided-feeling gap above short content in a tall/maximized window.
+  // Reimplemented by hand (not scrollToContent) since it has no "center X, align-top Y" mode.
   const centerOnElements = useCallback((api: ExcalidrawImperativeAPI, elements: readonly ExcalidrawElement[]) => {
     if (hasCenteredRef.current) return;
     hasCenteredRef.current = true;
@@ -165,8 +181,17 @@ export function AnnotationOverlay({
       clearTimeout(centerTimeoutRef.current);
       centerTimeoutRef.current = null;
     }
-    if (elements.length === 0) return; // blank scene: leave Excalidraw's default camera
-    api.scrollToContent(elements, { fitToViewport: false, animate: false });
+    if (elements.length > 0) {
+      const minX = Math.min(...elements.map((el) => el.x));
+      const maxX = Math.max(...elements.map((el) => el.x + el.width));
+      const minY = Math.min(...elements.map((el) => el.y));
+      const appState = api.getAppState();
+      const zoom = appState.zoom.value;
+      const scrollX = appState.width / 2 / zoom - (minX + maxX) / 2;
+      const scrollY = TOP_ALIGN_PADDING / zoom - minY;
+      api.updateScene({ appState: { scrollX, scrollY }, captureUpdate: CaptureUpdateAction.NEVER });
+    }
+    setIsPositioned(true);
   }, []);
 
   const handleHeightChange = useCallback(
@@ -198,26 +223,48 @@ export function AnnotationOverlay({
   );
 
   // Seeds the pending-block set at mount (only ever run once — deliberately empty deps —
-  // so a block added later via "+ Add note" can't re-trigger centering) and arms a safety
-  // net in case some block's ResizeObserver never reports.
+  // so a block added later via "+ Add note" can't re-trigger centering) and arms a short
+  // fallback timer.
+  //
+  // Deliberately does NOT bail out just because `apiRef.current` isn't set yet: the
+  // `excalidrawAPI` ref callback (which sets it, from Excalidraw's own constructor) is not
+  // guaranteed to have already fired by the time this effect runs — true for a "warm" mount
+  // (e.g. clicking the Annotation tab after the app's been idle), but NOT for a "cold" one
+  // nested inside an async-triggered render (e.g. the first-launch welcome note, mounted
+  // from a `.then()` callback). Seeding `pending` needs no API access at all, and the
+  // fallback timer re-reads `apiRef.current` from inside its own (later) callback instead
+  // of capturing it now, so both still work whichever order the two actually fire in.
+  //
+  // The fallback timer is NOT a rare escape hatch — Excalidraw only mounts an embeddable's
+  // React content (and so only starts its ResizeObserver) once that element scrolls into
+  // the *current* viewport (see its own `isElementInViewport`/`initializedEmbeds` gating).
+  // With several blocks side by side wider than one screen, the ones outside the pre-camera-
+  // move default viewport structurally never fire `handleHeightChange` at all — `pending`
+  // then never reaches zero, and every such mount hits this timer, using whatever height
+  // (real or still-placeholder) each block happens to have at that moment. Kept short so an
+  // off-screen block doesn't stall the visible ones behind a multi-second delay.
   useEffect(() => {
     if (!centerOnMount) return;
-    const api = apiRef.current;
-    if (!api) return;
 
     const blockIds = markdownBlocks.map((b) => b.id);
     pendingBlockIdsRef.current = new Set(blockIds);
 
-    if (pendingBlockIdsRef.current.size === 0) {
-      centerOnElements(api, api.getSceneElements());
-      return;
-    }
-
+    // Always armed, regardless of whether `pending` is already empty or `apiRef.current` is
+    // set yet — the sole guarantee that this note ever gets revealed. The zero-blocks
+    // fast-path below is purely an optimization (skips the wait when possible); it must not
+    // be the only path, or a zero-block note mounted "cold" (api not ready yet right now)
+    // would stay hidden forever with nothing left to trigger a reveal.
     centerTimeoutRef.current = setTimeout(() => {
+      const api = apiRef.current;
+      if (!api) return;
       const els = api.getSceneElements();
       const markdownEls = els.filter((el) => isMarkdownElementId(el.id));
       centerOnElements(api, markdownEls.length > 0 ? markdownEls : els);
-    }, 2000);
+    }, 150);
+
+    if (pendingBlockIdsRef.current.size === 0 && apiRef.current) {
+      centerOnElements(apiRef.current, apiRef.current.getSceneElements());
+    }
 
     return () => {
       if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
@@ -233,7 +280,7 @@ export function AnnotationOverlay({
   );
 
   return (
-    <div className="notegpt-annotation-overlay">
+    <div className="notegpt-annotation-overlay" style={{ visibility: isPositioned ? "visible" : "hidden" }}>
       <Excalidraw
         excalidrawAPI={excalidrawAPI}
         viewModeEnabled={viewMode}
