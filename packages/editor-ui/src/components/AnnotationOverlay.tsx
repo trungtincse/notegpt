@@ -130,6 +130,11 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
           elements: ensureMarkdownElement(scene.elements) as ExcalidrawElement[],
           appState: scene.appState as Partial<AppState>,
           files: scene.files as BinaryFiles,
+          // Recenters the camera on the scene content (the markdown column, plus
+          // any annotations) every time the overlay mounts, so it sits in the
+          // middle of the canvas regardless of window size instead of relying on
+          // a fixed scene x/y.
+          scrollToContent: true,
         }}
         onChange={viewMode ? undefined : debouncedOnChange}
       />

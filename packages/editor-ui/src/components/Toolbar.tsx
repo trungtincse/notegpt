@@ -58,7 +58,10 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
 
   const selectTool = (type: ToolType) => {
     const api = excalidrawApiRef.current;
-    api?.setActiveTool({ type });
+    // locked: true keeps the tool active after finishing a draw — Excalidraw's
+    // default is to revert to "selection" after every shape/stroke, which without
+    // this would force re-clicking the tool button before every single draw.
+    api?.setActiveTool({ type, locked: true });
     // currentItemOpacity/currentItemBackgroundColor are shared appState values, not scoped
     // to the highlighter tool — without resetting them here, switching away from the
     // highlighter (which sets 40% opacity and a solid yellow fill for its translucent look)
@@ -75,7 +78,7 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
   const activateHighlighter = () => {
     const api = excalidrawApiRef.current;
     if (!api) return;
-    api.setActiveTool({ type: "rectangle" });
+    api.setActiveTool({ type: "rectangle", locked: true });
     api.updateScene({
       appState: {
         currentItemStrokeColor: "transparent",
