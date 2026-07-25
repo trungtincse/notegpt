@@ -1,5 +1,5 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import type { StorageAdapter } from "@notegpt/core";
+import { isMarkdownElementId, type StorageAdapter } from "@notegpt/core";
 import { Code2, Eye, PenLine, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAnnotationController } from "../hooks/useAnnotationController.js";
@@ -54,6 +54,35 @@ export function EditorShell({ storage, noteId, initialMode = "markdown" }: Edito
       if (requestedIdRef.current === noteId) setLoadedId(noteId);
     });
   }, [noteId]);
+
+  // A note that already has something to look at (written text, or hand-drawn annotation
+  // — but not just the markdown embeddable's own placeholder element) opens straight on the
+  // View tab instead of Markdown, since there's no need to write first before there's
+  // anything to read.
+  //
+  // Deliberately calls setMode() during render (React's documented "adjust state while
+  // rendering" pattern — https://react.dev/reference/react/useState#storing-information-from-previous-renders)
+  // instead of from a useEffect: an effect only runs *after* the browser has already painted
+  // the "markdown" tab for one frame, which is exactly the flash the user reported. Calling
+  // it here instead makes React throw away that render and redo it before anything paints.
+  //
+  // The guard MUST be useState, not useRef: StrictMode (see main.tsx) double-invokes the
+  // component's render body in dev mode to surface impure renders. A ref mutated directly
+  // during render (`ref.current = true`) changes on the first of the two invocations, so the
+  // second one — the one React actually keeps — sees it already flipped and skips setMode
+  // entirely, silently losing the auto-switch in dev builds only. Reading a state value
+  // instead is safe: a setter call doesn't change what the *same* render call reads back,
+  // so both invocations see the same prior value and reach the same (correct) decision.
+  const [modeDecidedForNoteId, setModeDecidedForNoteId] = useState<string | null>(null);
+  if (note && modeDecidedForNoteId !== note.id) {
+    setModeDecidedForNoteId(note.id);
+    const hasMarkdownContent = note.markdownBlocks.some((b) => b.markdown.trim() !== "");
+    const hasAnnotationContent = note.annotation.elements.some((el) => {
+      const e = el as { id?: unknown; isDeleted?: boolean };
+      return typeof e.id === "string" && !isMarkdownElementId(e.id) && !e.isDeleted;
+    });
+    if (hasMarkdownContent || hasAnnotationContent) setMode("view");
+  }
 
   if (!note || loadedId !== noteId) {
     return <div className="notegpt-editor-shell-loading">Loading…</div>;
