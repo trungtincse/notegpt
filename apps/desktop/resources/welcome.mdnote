@@ -48,8 +48,8 @@
         {
           "id": "tv_3hDqVGE8KY4SbjKlG5",
           "type": "image",
-          "x": 1294.042220238094,
-          "y": -520.8754758962382,
+          "x": 1289.7745885176407,
+          "y": -516.6078441757852,
           "width": 898.0199770916607,
           "height": 756.1078441757851,
           "angle": 0,
@@ -65,11 +65,11 @@
           "index": "a4",
           "roundness": null,
           "seed": 1785054848,
-          "version": 136,
-          "versionNonce": 213254404,
+          "version": 142,
+          "versionNonce": 189037495,
           "isDeleted": false,
           "boundElements": [],
-          "updated": 1784979377423,
+          "updated": 1784995034645,
           "link": null,
           "locked": false,
           "status": "pending",
@@ -2205,8 +2205,8 @@
         {
           "id": "AtQIg3P1-RIcheaeK2XFm",
           "type": "image",
-          "x": 1018.7673089551486,
-          "y": -338.2202919948444,
+          "x": 1014.4996772346956,
+          "y": -314.0370455789438,
           "width": 256,
           "height": 256,
           "angle": 0,
@@ -2222,11 +2222,11 @@
           "index": "b06",
           "roundness": null,
           "seed": 1820190524,
-          "version": 120,
-          "versionNonce": 775912636,
+          "version": 148,
+          "versionNonce": 425855033,
           "isDeleted": false,
           "boundElements": [],
-          "updated": 1784979492148,
+          "updated": 1784995029878,
           "link": null,
           "locked": false,
           "status": "pending",
@@ -2243,7 +2243,7 @@
           "x": 1004.6816888824849,
           "y": 728.3424802906542,
           "width": 900,
-          "height": 683,
+          "height": 709,
           "link": "notegpt:markdown",
           "locked": false,
           "strokeColor": "transparent",
@@ -2288,7 +2288,7 @@
           "version": 22,
           "versionNonce": 1650729780,
           "isDeleted": false,
-          "boundElements": null,
+          "boundElements": [],
           "updated": 1784990526013,
           "link": null,
           "locked": false,
@@ -2380,10 +2380,7 @@
           ],
           "pressures": [],
           "simulatePressure": true,
-          "lastCommittedPoint": [
-            12.802895161359174,
-            31.29596594998884
-          ]
+          "lastCommittedPoint": null
         }
       ],
       "appState": {
@@ -2397,8 +2394,8 @@
         "zoom": {
           "value": 0.702966
         },
-        "scrollX": -724.2717686302971,
-        "scrollY": -84.24629671641623
+        "scrollX": -701.5110661212135,
+        "scrollY": 642.243887877383
       },
       "files": {
         "03513e39aeae240b7b14eace42675510487ad8a8": {
@@ -2447,6 +2444,6 @@
     },
     "schemaVersion": 2,
     "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-07-25T14:42:50.231Z"
+    "updatedAt": "2026-07-25T15:57:18.967Z"
   }
 }

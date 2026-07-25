@@ -1,6 +1,7 @@
-import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, type Note } from "@notegpt/core";
+import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, parseNoteLink, type Note } from "@notegpt/core";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
+import { PDFDocument, PDFName, PDFString } from "pdf-lib";
 
 // Comfortably above AnnotationOverlay's own internal 3000ms readiness fallback (see its
 // comments) plus margin for a couple of extra animation frames — this is the last-resort
@@ -20,19 +21,118 @@ const CONTENT_PADDING = 150;
 // to be scaled or clipped and the whole note always prints as a single page.
 const CSS_PX_PER_INCH = 96;
 
+interface PrintSceneDimensions {
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+}
+
 /**
- * The print width is sized to exactly fit the scene's own content bounds — the markdown
- * column plus however far any hand-drawn annotation extends left/right of it. Both live
+ * The print width/height are sized to exactly fit the scene's own content bounds — the
+ * markdown column plus however far any hand-drawn annotation extends around it. Both live
  * in the same scene-coordinate space (the markdown container is a real scene element, see
  * `ensureMarkdownElements`), so this is a direct measurement, not a scrollX/zoom/viewport
- * approximation.
+ * approximation. Mirrors PrintView.tsx's own `printScene` sizing exactly — the only other
+ * place allowed to compute this, since link-annotation placement below depends on both
+ * agreeing on the identical numbers.
  */
-function getPrintWidth(note: Note): number {
+function getPrintSceneDimensions(note: Note): PrintSceneDimensions {
   const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
   // Only visible elements count toward sizing — see PrintView.tsx's matching filter for why
   // (an invisible leftover stroke shouldn't be able to stretch the page out around nothing).
-  const { minX, maxX } = getSceneBounds(elements.filter(isVisiblyRendered));
-  return Math.ceil(maxX - minX) + CONTENT_PADDING * 2;
+  const { minX, minY, maxX, maxY } = getSceneBounds(elements.filter(isVisiblyRendered));
+  return {
+    minX,
+    minY,
+    width: Math.ceil(maxX - minX) + CONTENT_PADDING * 2,
+    height: Math.ceil(maxY - minY) + CONTENT_PADDING * 2,
+  };
+}
+
+/** Only real http(s) links are worth a clickable PDF annotation — internal note-links (see
+ * buildNoteLink) point at another .mdnote file, which a PDF viewer has no way to open. */
+function isExternalLink(link: unknown): link is string {
+  return typeof link === "string" && /^https?:\/\//.test(link) && parseNoteLink(link) === null;
+}
+
+interface LinkRect {
+  url: string;
+  /** Pixel position/size within the print page's content box (title + scene), i.e. the same
+   * coordinate space `.notegpt-print-page`'s bounding rect is measured in — NOT scene space,
+   * and not yet converted to PDF points or flipped to PDF's bottom-left origin. */
+  xPx: number;
+  yPx: number;
+  widthPx: number;
+  heightPx: number;
+}
+
+/** Maps each linked element's scene bounding box to its pixel rect in the print page, using
+ * the exact same scrollX/scrollY = -min + CONTENT_PADDING, zoom = 1 math PrintView.tsx's
+ * `printScene.scene.appState` sets up — this function and that one must never drift apart. */
+function collectLinkRects(note: Note, titleBlockHeightPx: number): LinkRect[] {
+  const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
+  const { minX, minY } = getSceneBounds(elements.filter(isVisiblyRendered));
+
+  const rects: LinkRect[] = [];
+  for (const el of elements as Array<{ isDeleted?: unknown; link?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown }>) {
+    if (el.isDeleted || !isExternalLink(el.link)) continue;
+    const x = typeof el.x === "number" ? el.x : 0;
+    const y = typeof el.y === "number" ? el.y : 0;
+    const width = typeof el.width === "number" ? el.width : 0;
+    const height = typeof el.height === "number" ? el.height : 0;
+    rects.push({
+      url: el.link,
+      xPx: x - minX + CONTENT_PADDING,
+      yPx: y - minY + CONTENT_PADDING + titleBlockHeightPx,
+      widthPx: width,
+      heightPx: height,
+    });
+  }
+  return rects;
+}
+
+const POINTS_PER_CSS_PX = 72 / CSS_PX_PER_INCH;
+
+/** Adds a clickable PDF Link annotation for each rect — pdf-lib has no first-class API for
+ * this, so the annotation dict is built by hand via its low-level PDFContext (the standard
+ * recipe for this; see pdf-lib's own issue tracker for prior art). `context.obj()` turns a
+ * bare JS string into a PDF *Name* (correct for /Type, /Subtype, /S — those are names per the
+ * PDF spec), which is why the URI itself has to be wrapped in `PDFString.of()` explicitly
+ * instead of being left as a plain string in the literal. */
+async function addLinkAnnotations(pdfBytes: Uint8Array, links: LinkRect[], marginTopIn: number): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const page = pdfDoc.getPage(0);
+  const pageHeightPt = page.getHeight();
+  const marginTopPt = marginTopIn * 72;
+
+  for (const link of links) {
+    const xPt = link.xPx * POINTS_PER_CSS_PX;
+    const topYPt = pageHeightPt - marginTopPt - link.yPx * POINTS_PER_CSS_PX;
+    const bottomYPt = topYPt - link.heightPx * POINTS_PER_CSS_PX;
+    const widthPt = link.widthPx * POINTS_PER_CSS_PX;
+
+    const annotation = pdfDoc.context.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: [xPt, bottomYPt, xPt + widthPt, topYPt],
+      Border: [0, 0, 0],
+      A: {
+        Type: "Action",
+        S: "URI",
+        URI: PDFString.of(link.url),
+      },
+    });
+    const annotationRef = pdfDoc.context.register(annotation);
+    const existingAnnots = page.node.Annots();
+    if (existingAnnots) {
+      existingAnnots.push(annotationRef);
+    } else {
+      page.node.set(PDFName.of("Annots"), pdfDoc.context.obj([annotationRef]));
+    }
+  }
+
+  return Buffer.from(await pdfDoc.save());
 }
 
 export interface ExportPdfOptions {
@@ -96,7 +196,8 @@ export function registerExportHandlers(getWindow: () => BrowserWindow | null, op
 
         const [, mainHeight] = win?.getContentSize() ?? [0, FALLBACK_WINDOW_HEIGHT];
         const note = deserializeMdNote(await fs.readFile(filePath, "utf-8"));
-        const printWidth = getPrintWidth(note);
+        const printDimensions = getPrintSceneDimensions(note);
+        const printWidth = printDimensions.width;
         printWin = new BrowserWindow({
           show: false,
           width: printWidth,
@@ -134,7 +235,21 @@ export function registerExportHandlers(getWindow: () => BrowserWindow | null, op
           pageSize: { width: printWidth / CSS_PX_PER_INCH, height: pageHeightIn },
           margins: { top: marginTopIn, bottom: marginBottomIn, left: 0, right: 0 },
         });
-        await fs.writeFile(saveResult.filePath, pdfBuffer);
+
+        // titleBlockHeightPx can only be derived once the real rendered height is known (the
+        // title's own height isn't part of scene bounds — see PrintView.tsx) — skip adding
+        // link annotations entirely on the rare timeout fallback (contentHeight === null)
+        // rather than guess and place them wrong.
+        let finalBuffer: Uint8Array = pdfBuffer;
+        if (contentHeight !== null) {
+          const titleBlockHeightPx = Math.max(0, contentHeight - printDimensions.height);
+          const linkRects = collectLinkRects(note, titleBlockHeightPx);
+          if (linkRects.length > 0) {
+            finalBuffer = await addLinkAnnotations(pdfBuffer, linkRects, marginTopIn);
+          }
+        }
+
+        await fs.writeFile(saveResult.filePath, finalBuffer);
         return saveResult.filePath;
       } finally {
         printWin?.destroy();
