@@ -13,7 +13,7 @@ import {
   Type as TextIcon,
   Undo2,
 } from "lucide-react";
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 export interface ToolbarProps {
   excalidrawApiRef: RefObject<ExcalidrawImperativeAPI | null>;
@@ -36,8 +36,8 @@ const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
 // activateHighlighter) renders between Image and Eraser, so it's split out of this
 // list rather than appended after it.
 const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIcon }> = [
-  { type: "selection", label: "Select", Icon: LassoSelect },
   { type: "hand", label: "Hand", Icon: Hand },
+  { type: "selection", label: "Select", Icon: LassoSelect },
   { type: "freedraw", label: "Pen", Icon: Pencil },
   { type: "text", label: "Text", Icon: TextIcon },
   { type: "image", label: "Image", Icon: ImageIcon },
@@ -55,8 +55,19 @@ function dispatchToExcalidraw(key: string, options: KeyboardEventInit = {}) {
 }
 
 export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
-  const [activeTool, setActiveTool] = useState<ToolType | "highlighter">("selection");
+  const [activeTool, setActiveTool] = useState<ToolType | "highlighter">("hand");
   const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
+
+  // Hand is the default tool the moment the Annotation tab opens — panning around a note
+  // should never accidentally start a drawing/selection gesture. Toolbar only ever mounts
+  // from the user directly clicking the "Annotation" tab (see EditorShell), so Excalidraw's
+  // own constructor (which sets excalidrawApiRef.current) has always already run by the time
+  // this effect fires — unlike AnnotationOverlay's own centering logic, which has to guard
+  // against a "cold", async-triggered mount that can't happen here.
+  useEffect(() => {
+    excalidrawApiRef.current?.setActiveTool({ type: "hand", locked: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectTool = (type: ToolType) => {
     const api = excalidrawApiRef.current;
