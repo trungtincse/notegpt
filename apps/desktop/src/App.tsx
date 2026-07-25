@@ -2,6 +2,8 @@ import { EditorShell } from "@notegpt/editor-ui";
 import { ChevronDown, FolderOpen, MoreHorizontal, Pin, PinOff, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
+import { WelcomeNoteStorageAdapter } from "./adapters/WelcomeNoteStorageAdapter.js";
+import { WELCOME_NOTE_ID } from "./welcomeNote.js";
 
 interface NoteListEntry {
   filePath: string;
@@ -73,6 +75,12 @@ export function App() {
   });
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  // Shows the bundled intro note (read-only, view mode) the very first time the app is ever
+  // opened, replacing the empty-state placeholder in <main> until the user picks a real note
+  // or folder. Persisted via mdnote:getHasSeenWelcome/markWelcomeSeen so it never reappears
+  // on later launches once shown.
+  const [showingWelcome, setShowingWelcome] = useState(false);
+  const welcomeAdapter = useMemo(() => new WelcomeNoteStorageAdapter(), []);
   const [draftTitle, setDraftTitle] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -174,6 +182,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    void window.mdnote.getHasSeenWelcome().then((seen) => {
+      if (seen) return;
+      setShowingWelcome(true);
+      void window.mdnote.markWelcomeSeen();
+    });
+  }, []);
+
+  useEffect(() => {
     if (!openMenuPath) return;
     const closeMenu = () => {
       setOpenMenuPath(null);
@@ -188,6 +204,7 @@ export function App() {
     if (picked) {
       setFolderPath(picked);
       setSelectedFilePath(null);
+      setShowingWelcome(false);
     }
   }, []);
 
@@ -446,6 +463,8 @@ export function App() {
       <main className="notegpt-main">
         {adapter && selectedFilePath ? (
           <EditorShell key={`${selectedFilePath}:${reloadToken}`} storage={adapter} noteId={selectedFilePath} />
+        ) : showingWelcome ? (
+          <EditorShell key="welcome" storage={welcomeAdapter} noteId={WELCOME_NOTE_ID} initialMode="view" />
         ) : (
           <div style={{ padding: 24, color: "#888" }}>
             {folderPath ? "Select or create a note." : "Open a folder to get started."}

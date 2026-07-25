@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
 import { getPinnedFiles, removePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
 import { addRecentFile, getRecentFiles, removeRecentFile } from "./recentFiles.js";
-import { getLastFolder, setLastFolder } from "./settings.js";
+import { getHasSeenWelcome, getLastFolder, markWelcomeSeen, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
 
@@ -135,4 +135,7 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
   ipcMain.handle("mdnote:togglePinnedFile", async (_event, filePath: string): Promise<string[]> => togglePinnedFile(filePath));
 
   ipcMain.handle("mdnote:getLastFolder", async (): Promise<string | null> => getLastFolder());
+
+  ipcMain.handle("mdnote:getHasSeenWelcome", async (): Promise<boolean> => getHasSeenWelcome());
+  ipcMain.handle("mdnote:markWelcomeSeen", async (): Promise<void> => markWelcomeSeen());
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 interface Settings {
   lastFolder?: string;
+  hasSeenWelcome?: boolean;
 }
 
 function settingsPath(): string {
@@ -28,5 +29,16 @@ export async function getLastFolder(): Promise<string | null> {
 export async function setLastFolder(folderPath: string): Promise<void> {
   const settings = await readSettings();
   settings.lastFolder = folderPath;
+  await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
+}
+
+export async function getHasSeenWelcome(): Promise<boolean> {
+  const settings = await readSettings();
+  return settings.hasSeenWelcome === true;
+}
+
+export async function markWelcomeSeen(): Promise<void> {
+  const settings = await readSettings();
+  settings.hasSeenWelcome = true;
   await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf-8");
 }

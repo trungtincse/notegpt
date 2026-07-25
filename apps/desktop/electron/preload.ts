@@ -17,6 +17,8 @@ export const mdnoteApi = {
   getPinnedFiles: (): Promise<string[]> => ipcRenderer.invoke("mdnote:getPinnedFiles"),
   togglePinnedFile: (filePath: string): Promise<string[]> => ipcRenderer.invoke("mdnote:togglePinnedFile", filePath),
   getLastFolder: (): Promise<string | null> => ipcRenderer.invoke("mdnote:getLastFolder"),
+  getHasSeenWelcome: (): Promise<boolean> => ipcRenderer.invoke("mdnote:getHasSeenWelcome"),
+  markWelcomeSeen: (): Promise<void> => ipcRenderer.invoke("mdnote:markWelcomeSeen"),
   exportNotePdf: (folderPath: string, filePath: string, title: string): Promise<string | null> =>
     ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
   notifyPrintReady: (contentHeight: number): void => ipcRenderer.send("mdnote:print-ready", contentHeight),

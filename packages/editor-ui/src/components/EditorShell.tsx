@@ -8,12 +8,15 @@ import { AnnotationOverlay } from "./AnnotationOverlay.js";
 import { CodeMirrorEditor } from "./CodeMirrorEditor.js";
 import { Toolbar } from "./Toolbar.js";
 
+export type ShellMode = "markdown" | "annotation" | "view";
+
 export interface EditorShellProps {
   storage: StorageAdapter;
   noteId: string;
+  /** Which of the three tabs is showing first. Defaults to "markdown"; callers that open a
+   * note purely for reading (e.g. a bundled first-launch intro note) can start on "view". */
+  initialMode?: ShellMode;
 }
-
-type ShellMode = "markdown" | "annotation" | "view";
 
 /**
  * Composition root for the editor, split into three independent sections
@@ -25,12 +28,12 @@ type ShellMode = "markdown" | "annotation" | "view";
  * enabled — Excalidraw's own camera provides pan/zoom for both. A header
  * switcher moves between the three.
  */
-export function EditorShell({ storage, noteId }: EditorShellProps) {
+export function EditorShell({ storage, noteId, initialMode = "markdown" }: EditorShellProps) {
   const { note, saveStatus, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
     useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
-  const [mode, setMode] = useState<ShellMode>("markdown");
+  const [mode, setMode] = useState<ShellMode>(initialMode);
   // Which block's editor is showing in the Markdown tab. Falls back to the first block
   // whenever this doesn't match a live block (initial mount, the active block got removed
   // via its tab's close button, or deleted via canvas — see AnnotationController's prune)
