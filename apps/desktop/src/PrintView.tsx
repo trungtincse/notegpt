@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
 
 // Padding (px) around the scene's content bounds so nothing sits flush against the page edge.
-const CONTENT_PADDING = 40;
+// Larger than it looks like it should need to be: hand-drawn (rough.js) strokes visually
+// overshoot their own element's x/y/width/height a bit for the sketchy look, so a shape whose
+// logical bounding box sits right at minX/maxX can still render a little outside it — too
+// small a padding here clips that overshoot at the page edge instead of framing it.
+const CONTENT_PADDING = 150;
 
 /** Waits two animation frames — letting Excalidraw's canvas actually paint — before
  * resolving, instead of guessing a fixed delay that could either race ahead of the

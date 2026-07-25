@@ -296,7 +296,7 @@ export function AnnotationOverlay({
       const els = api.getSceneElements();
       const markdownEls = els.filter((el) => isMarkdownElementId(el.id));
       markReadyAndMaybeCenter(api, markdownEls.length > 0 ? markdownEls : els);
-    }, 800);
+    }, 3000);
 
     if (pendingBlockIdsRef.current.size === 0 && apiRef.current) {
       markReadyAndMaybeCenter(apiRef.current, apiRef.current.getSceneElements());

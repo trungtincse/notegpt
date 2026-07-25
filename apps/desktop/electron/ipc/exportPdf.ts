@@ -2,12 +2,16 @@ import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, type Note } 
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 
-const PRINT_READY_TIMEOUT_MS = 5000;
+// Comfortably above AnnotationOverlay's own internal 3000ms readiness fallback (see its
+// comments) plus margin for a couple of extra animation frames — this is the last-resort
+// cap if the renderer never signals ready at all, not the timing that's expected to matter
+// in practice.
+const PRINT_READY_TIMEOUT_MS = 8000;
 const FALLBACK_WINDOW_HEIGHT = 800;
 // Padding (px) around the scene's content bounds — matches PrintView.tsx's own
-// CONTENT_PADDING, so the print window's width is sized to exactly what PrintView
-// will actually render.
-const CONTENT_PADDING = 40;
+// CONTENT_PADDING (keep both in sync — see its comment on why 100, not a tighter value),
+// so the print window's width is sized to exactly what PrintView will actually render.
+const CONTENT_PADDING = 150;
 // Chromium's print pipeline lays out HTML at the window's actual CSS pixel width and, by
 // default, does not reliably shrink content wider than the physical page to fit it — it
 // clips instead. Rather than fight a fixed A4 width against our (sometimes wider) annotation
