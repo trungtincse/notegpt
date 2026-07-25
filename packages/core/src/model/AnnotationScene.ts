@@ -6,13 +6,13 @@ export interface AnnotationScene {
 }
 
 /**
- * Well-known id of the single Excalidraw `embeddable` element that hosts the rendered
- * markdown text as a real scene element (see `AnnotationOverlay`'s `renderEmbeddable`).
- * Its own x/width, in the same scene-coordinate space as hand-drawn elements, define
- * where the text column sits — consumers like PDF export use this to tell whether an
- * annotation sits under the column or extends into the margins beside it.
+ * @deprecated v1-only. A Note used to carry exactly one markdown document, rendered as a
+ * single embeddable element with this fixed id. Retained solely so migrations.ts can find
+ * and rewrite that legacy element when migrating a v1 note — never produced by current code.
  */
-export const MARKDOWN_ELEMENT_ID = "notegpt-markdown";
+export const LEGACY_MARKDOWN_ELEMENT_ID = "notegpt-markdown";
+
+const MARKDOWN_ELEMENT_ID_PREFIX = "notegpt-markdown:";
 
 /** Matches the reading column width used across the editor UI and PDF export. */
 export const MARKDOWN_TEXT_COLUMN_WIDTH = 900;
@@ -24,33 +24,74 @@ const MARKDOWN_DEFAULT_HEIGHT = 400;
 // render the element at all.
 const MARKDOWN_EMBED_LINK = "notegpt:markdown";
 
+/** Gap (px) between markdown blocks laid out side by side, and around the whole scene's content. */
+const GUTTER = 40;
+
+/** Builds the scene-element id for a given markdown block's canvas embeddable. */
+export function buildMarkdownElementId(blockId: string): string {
+  return `${MARKDOWN_ELEMENT_ID_PREFIX}${blockId}`;
+}
+
+export function isMarkdownElementId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith(MARKDOWN_ELEMENT_ID_PREFIX);
+}
+
+/** Inverse of buildMarkdownElementId — null if `id` isn't a markdown block element's id. */
+export function parseMarkdownElementId(id: string): string | null {
+  return isMarkdownElementId(id) ? id.slice(MARKDOWN_ELEMENT_ID_PREFIX.length) : null;
+}
+
+interface IdentifiedElementLike {
+  id?: unknown;
+  isDeleted?: boolean;
+}
+
+/** Block ids of every non-deleted markdown embeddable currently in `elements` — the single
+ * source of truth `ensureMarkdownElements` and the note controller's orphan-GC both use. */
+export function getLiveMarkdownBlockIds(elements: unknown[]): Set<string> {
+  const ids = new Set<string>();
+  for (const el of elements as IdentifiedElementLike[]) {
+    if (el.isDeleted) continue;
+    if (typeof el.id === "string" && isMarkdownElementId(el.id)) ids.add(parseMarkdownElementId(el.id)!);
+  }
+  return ids;
+}
+
 /**
- * Ensures `elements` contains the markdown container element, injecting a default
- * one (at the top-left, at the standard column width, locked so it can't be
- * dragged/deleted like a normal shape) for notes that don't have it yet — brand
- * new notes, or notes saved before this element existed. Elements are kept as
- * `unknown[]` (not typed against `@excalidraw/excalidraw`) so this stays usable
- * from non-React/non-Excalidraw contexts like the Electron main process.
+ * Ensures `elements` contains a markdown container element for each of `blockIds`, injecting
+ * a default (unlocked — draggable/resizable like any other shape) one for whichever are
+ * missing: brand new blocks, or notes saved before they existed. New elements stagger to the
+ * right of the scene's current bounds so multiple simultaneously-missing blocks (e.g. during
+ * migration) don't land stacked on top of each other. Elements are kept as `unknown[]` (not
+ * typed against `@excalidraw/excalidraw`) so this stays usable from non-React/non-Excalidraw
+ * contexts like the Electron main process.
  */
-export function ensureMarkdownElement(elements: unknown[]): unknown[] {
-  if ((elements as { id?: string }[]).some((el) => el.id === MARKDOWN_ELEMENT_ID)) return elements;
-  const markdownElement = {
-    id: MARKDOWN_ELEMENT_ID,
+export function ensureMarkdownElements(elements: unknown[], blockIds: string[]): unknown[] {
+  const present = getLiveMarkdownBlockIds(elements);
+  const missing = blockIds.filter((id) => !present.has(id));
+  if (missing.length === 0) return elements;
+
+  const liveCount = (elements as IdentifiedElementLike[]).filter((el) => !el.isDeleted).length;
+  const bounds = getSceneBounds(elements);
+  const startX = liveCount > 0 ? bounds.maxX + GUTTER : 0;
+
+  const newElements = missing.map((blockId, i) => ({
+    id: buildMarkdownElementId(blockId),
     type: "embeddable",
-    // Centered on the scene origin, which is what a fresh canvas (scrollX/Y at
-    // their default of 0) shows in the middle of the viewport.
-    x: 0,
+    x: startX + i * (MARKDOWN_TEXT_COLUMN_WIDTH + GUTTER),
     y: 0,
     width: MARKDOWN_TEXT_COLUMN_WIDTH,
     height: MARKDOWN_DEFAULT_HEIGHT,
     link: MARKDOWN_EMBED_LINK,
-    locked: true,
+    // Draggable/resizable like a real sticky note — unlike the old single-markdown design,
+    // these are never locked.
+    locked: false,
     // Otherwise Excalidraw's own defaults (a visible stroke/fill, same as any
     // other shape) paint a rectangle around the rendered markdown content.
     strokeColor: "transparent",
     backgroundColor: "transparent",
-  };
-  return [markdownElement, ...elements];
+  }));
+  return [...elements, ...newElements];
 }
 
 export function createEmptyAnnotationScene(): AnnotationScene {

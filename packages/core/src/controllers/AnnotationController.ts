@@ -1,4 +1,4 @@
-import type { AnnotationScene } from "../model/AnnotationScene.js";
+import { getLiveMarkdownBlockIds, type AnnotationScene } from "../model/AnnotationScene.js";
 import type { NoteController } from "./NoteController.js";
 
 interface ElementLike {
@@ -24,6 +24,11 @@ export class AnnotationController {
 
   updateScene(elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>): void {
     const scene = gcUnreferencedFiles({ elements, appState, files });
+
+    // Mirrors gcUnreferencedFiles above, but for note-owned block content: if the user
+    // deleted a sticky note's embeddable on canvas, drop its matching markdownBlocks entry
+    // too. No separate "delete block" UI is needed — this is the only place deletion happens.
+    this.noteController.pruneMarkdownBlocks(getLiveMarkdownBlockIds(scene.elements));
 
     // Excalidraw's onChange fires continuously even without user interaction
     // (internal appState churn). Skip the update entirely when nothing the app

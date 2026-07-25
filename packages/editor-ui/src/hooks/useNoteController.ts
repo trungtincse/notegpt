@@ -20,7 +20,8 @@ export function useNoteController(storage: StorageAdapter) {
     load: (id: string) => controller.load(id),
     createNew: (title: string) => controller.createNew(title),
     save: () => controller.save(),
-    updateMarkdown: (markdown: string) => controller.updateMarkdown(markdown),
+    addMarkdownBlock: () => controller.addMarkdownBlock(),
+    updateMarkdownBlock: (blockId: string, markdown: string) => controller.updateMarkdownBlock(blockId, markdown),
     updateAnnotation: (annotation: AnnotationScene) => controller.updateAnnotation(annotation),
   };
 }

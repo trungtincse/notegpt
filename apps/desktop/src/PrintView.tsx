@@ -1,4 +1,4 @@
-import { ensureMarkdownElement, getSceneBounds, type Note } from "@notegpt/core";
+import { ensureMarkdownElements, getSceneBounds, type Note } from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
@@ -48,7 +48,7 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
   // scrolled to fit the *entire* scene, using the scene's own content bounds.
   const printScene = useMemo(() => {
     if (!note) return null;
-    const elements = ensureMarkdownElement(note.annotation.elements);
+    const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
     const { minX, minY, maxX, maxY } = getSceneBounds(elements);
     return {
       scene: {
@@ -72,7 +72,7 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
     <div className="notegpt-print-page" ref={pageRef}>
       <h1 className="notegpt-print-title">{note.title}</h1>
       <div style={{ position: "relative", width: printScene.width, height: printScene.height }}>
-        <AnnotationOverlay markdown={note.markdown} scene={printScene.scene} onChange={() => {}} viewMode centerOnMount={false} />
+        <AnnotationOverlay markdownBlocks={note.markdownBlocks} scene={printScene.scene} onChange={() => {}} viewMode centerOnMount={false} />
       </div>
     </div>
   );

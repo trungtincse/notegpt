@@ -1,4 +1,4 @@
-import { deserializeMdNote, ensureMarkdownElement, getSceneBounds, type Note } from "@notegpt/core";
+import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, type Note } from "@notegpt/core";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 
@@ -20,11 +20,11 @@ const CSS_PX_PER_INCH = 96;
  * The print width is sized to exactly fit the scene's own content bounds — the markdown
  * column plus however far any hand-drawn annotation extends left/right of it. Both live
  * in the same scene-coordinate space (the markdown container is a real scene element, see
- * `ensureMarkdownElement`), so this is a direct measurement, not a scrollX/zoom/viewport
+ * `ensureMarkdownElements`), so this is a direct measurement, not a scrollX/zoom/viewport
  * approximation.
  */
 function getPrintWidth(note: Note): number {
-  const elements = ensureMarkdownElement(note.annotation.elements);
+  const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
   const { minX, maxX } = getSceneBounds(elements);
   return Math.ceil(maxX - minX) + CONTENT_PADDING * 2;
 }

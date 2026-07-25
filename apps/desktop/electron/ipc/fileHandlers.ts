@@ -1,4 +1,4 @@
-import { createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationScene, type Note } from "@notegpt/core";
+import { concatMarkdownBlocks, createBlankNote, deserializeMdNote, serializeMdNote, type AnnotationScene, type Note } from "@notegpt/core";
 import { dialog, ipcMain, type BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import { extname, join } from "node:path";
@@ -88,7 +88,7 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null): voi
         summaries.push({
           filePath,
           title: note.title,
-          markdown: note.markdown,
+          markdown: concatMarkdownBlocks(note.markdownBlocks),
           annotationText: extractAnnotationText(note.annotation),
           updatedAt: note.updatedAt,
         });

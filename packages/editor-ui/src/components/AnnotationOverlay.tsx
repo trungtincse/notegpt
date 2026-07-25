@@ -2,24 +2,31 @@ import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { ensureMarkdownElement, MARKDOWN_ELEMENT_ID, MARKDOWN_TEXT_COLUMN_WIDTH, type AnnotationScene } from "@notegpt/core";
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import {
+  ensureMarkdownElements,
+  isMarkdownElementId,
+  parseMarkdownElementId,
+  MARKDOWN_TEXT_COLUMN_WIDTH,
+  type AnnotationScene,
+  type MarkdownBlock,
+} from "@notegpt/core";
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import { DEFAULT_STROKE_COLOR } from "./Toolbar.js";
 
 export interface AnnotationOverlayProps {
-  markdown: string;
+  markdownBlocks: MarkdownBlock[];
   scene: AnnotationScene;
   onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
   /** Read-only: disables editing via Excalidraw's own view mode. Panning/zooming
    * (Excalidraw's native camera) works the same in both modes. */
   viewMode?: boolean;
-  /** Recenters the camera on the markdown column once the scene has mounted.
+  /** Recenters the camera on the markdown blocks once the scene has mounted.
    * Off by default for callers (PrintView) that already compute their own exact
    * scrollX/scrollY/zoom to fit all elements into a tightly-sized page — auto-
-   * centering on just the markdown column there would fight that positioning and
+   * centering on just the markdown blocks there would fight that positioning and
    * push content outside the page's fixed bounds. */
   centerOnMount?: boolean;
 }
@@ -48,12 +55,23 @@ function pickPersistedAppState(appState: AppState): Record<string, unknown> {
   return picked;
 }
 
-/** Renders the note's markdown at the fixed column width and reports its natural
- * (content-driven) height, so the embeddable element's box can be kept in sync. */
-function MarkdownEmbeddable({ markdown, onHeightChange }: { markdown: string; onHeightChange: (height: number) => void }) {
+/** Renders one markdown block at the fixed column width and reports its natural
+ * (content-driven) height (identifying which element it measured), so that
+ * element's box can be kept in sync. */
+function MarkdownEmbeddable({
+  elementId,
+  markdown,
+  onHeightChange,
+}: {
+  elementId: string;
+  markdown: string;
+  onHeightChange: (elementId: string, height: number) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const onHeightChangeRef = useRef(onHeightChange);
   onHeightChangeRef.current = onHeightChange;
+  const elementIdRef = useRef(elementId);
+  elementIdRef.current = elementId;
 
   useEffect(() => {
     const node = containerRef.current;
@@ -62,7 +80,7 @@ function MarkdownEmbeddable({ markdown, onHeightChange }: { markdown: string; on
     // that load asynchronously and change the natural height after first paint.
     const observer = new ResizeObserver(([entry]) => {
       const height = entry?.borderBoxSize?.[0]?.blockSize ?? entry?.contentRect.height;
-      if (typeof height === "number") onHeightChangeRef.current(height);
+      if (typeof height === "number") onHeightChangeRef.current(elementIdRef.current, height);
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -75,11 +93,20 @@ function MarkdownEmbeddable({ markdown, onHeightChange }: { markdown: string; on
   );
 }
 
-export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalApiRef, viewMode = false, centerOnMount = true }: AnnotationOverlayProps) {
+export function AnnotationOverlay({
+  markdownBlocks,
+  scene,
+  onChange,
+  apiRef: externalApiRef,
+  viewMode = false,
+  centerOnMount = true,
+}: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  const markdownById = useMemo(() => new Map(markdownBlocks.map((b) => [b.id, b.markdown])), [markdownBlocks]);
 
   const debouncedOnChange = useRef(
     debounce((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
@@ -87,38 +114,87 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
-  // Centering has to wait for the *real* rendered height, not just the mount —
-  // a freshly pasted note's markdown element still carries its placeholder
-  // default height (see ensureMarkdownElement) until this callback's first
-  // measurement corrects it, so centering any earlier uses the wrong box size
-  // and lands off-center as soon as real content is taller/shorter than that.
+  // Multi-block centering state, scoped to one mount of this component. Three past bugs
+  // (all found the hard way — see git history on this file) must not be reintroduced:
+  // (1) centering on the WHOLE scene skews off-center as soon as an annotation sits outside
+  //     the markdown columns — only ever center on markdown elements specifically;
+  // (2) forcing embeddables' `activeEmbeddable` active gives them `pointer-events: auto`,
+  //     which swallows Pen/Highlighter clicks meant for the canvas — never touch it;
+  // (3) `excalidrawAPI` (the prop callback below) fires from inside Excalidraw's own
+  //     constructor, before it has loaded elements or measured its real container size, so
+  //     centering must wait for a later effect/callback, and specifically for each block's
+  //     *real* ResizeObserver-measured height, not the placeholder default height that
+  //     ensureMarkdownElements gives a freshly-created block.
   const hasCenteredRef = useRef(false);
+  const pendingBlockIdsRef = useRef<Set<string> | null>(null);
+  const centerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const centerOnElements = useCallback((api: ExcalidrawImperativeAPI, elements: readonly ExcalidrawElement[]) => {
+    if (hasCenteredRef.current) return;
+    hasCenteredRef.current = true;
+    if (centerTimeoutRef.current) {
+      clearTimeout(centerTimeoutRef.current);
+      centerTimeoutRef.current = null;
+    }
+    if (elements.length === 0) return; // blank scene: leave Excalidraw's default camera
+    api.scrollToContent(elements, { fitToViewport: false, animate: false });
+  }, []);
 
   const handleHeightChange = useCallback(
-    (height: number) => {
+    (elementId: string, height: number) => {
       const api = apiRef.current;
       if (!api) return;
       const rounded = Math.round(height);
       const elements = api.getSceneElements();
-      const target = elements.find((el) => el.id === MARKDOWN_ELEMENT_ID);
+      const target = elements.find((el) => el.id === elementId);
       if (!target) return;
+
+      let nextElements = elements;
       if (Math.abs(target.height - rounded) >= 1) {
-        api.updateScene({
-          elements: elements.map((el) => (el.id === MARKDOWN_ELEMENT_ID ? { ...el, height: rounded } : el)),
-          captureUpdate: CaptureUpdateAction.NEVER,
-        });
+        nextElements = elements.map((el) => (el.id === elementId ? { ...el, height: rounded } : el));
+        api.updateScene({ elements: nextElements, captureUpdate: CaptureUpdateAction.NEVER });
       }
-      if (centerOnMount && !hasCenteredRef.current) {
-        hasCenteredRef.current = true;
-        // Centers the camera on the markdown column specifically (with its now-
-        // accurate height) — centering on every scene element (via
-        // initialData.scrollToContent) skews off-center as soon as an
-        // annotation sits outside the column's own bounds.
-        api.scrollToContent({ ...target, height: rounded }, { fitToViewport: false, animate: false });
+
+      if (!centerOnMount || hasCenteredRef.current) return;
+      const pending = pendingBlockIdsRef.current;
+      if (!pending) return;
+      const blockId = parseMarkdownElementId(elementId);
+      if (blockId === null || !pending.has(blockId)) return;
+      pending.delete(blockId);
+      if (pending.size === 0) {
+        centerOnElements(api, nextElements.filter((el) => isMarkdownElementId(el.id)));
       }
     },
-    [apiRef, centerOnMount]
+    [apiRef, centerOnMount, centerOnElements]
   );
+
+  // Seeds the pending-block set at mount (only ever run once — deliberately empty deps —
+  // so a block added later via "+ Add note" can't re-trigger centering) and arms a safety
+  // net in case some block's ResizeObserver never reports.
+  useEffect(() => {
+    if (!centerOnMount) return;
+    const api = apiRef.current;
+    if (!api) return;
+
+    const blockIds = markdownBlocks.map((b) => b.id);
+    pendingBlockIdsRef.current = new Set(blockIds);
+
+    if (pendingBlockIdsRef.current.size === 0) {
+      centerOnElements(api, api.getSceneElements());
+      return;
+    }
+
+    centerTimeoutRef.current = setTimeout(() => {
+      const els = api.getSceneElements();
+      const markdownEls = els.filter((el) => isMarkdownElementId(el.id));
+      centerOnElements(api, markdownEls.length > 0 ? markdownEls : els);
+    }, 2000);
+
+    return () => {
+      if (centerTimeoutRef.current) clearTimeout(centerTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -133,15 +209,26 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
         excalidrawAPI={excalidrawAPI}
         viewModeEnabled={viewMode}
         validateEmbeddable
-        renderEmbeddable={(element) => (element.id === MARKDOWN_ELEMENT_ID ? <MarkdownEmbeddable markdown={markdown} onHeightChange={handleHeightChange} /> : null)}
+        renderEmbeddable={(element) => {
+          const blockId = parseMarkdownElementId(element.id);
+          if (blockId === null) return null;
+          return (
+            <MarkdownEmbeddable
+              key={element.id}
+              elementId={element.id}
+              markdown={markdownById.get(blockId) ?? ""}
+              onHeightChange={handleHeightChange}
+            />
+          );
+        }}
         // The markdown container's `link` is a placeholder, never a real URL (see
-        // ensureMarkdownElement) — without this, clicking its hyperlink affordance
+        // ensureMarkdownElements) — without this, clicking its hyperlink affordance
         // would try to open "notegpt:markdown" as a real link and fail.
         onLinkOpen={(element, event) => {
-          if (element.id === MARKDOWN_ELEMENT_ID) event.preventDefault();
+          if (isMarkdownElementId(element.id)) event.preventDefault();
         }}
         initialData={{
-          elements: ensureMarkdownElement(scene.elements) as ExcalidrawElement[],
+          elements: ensureMarkdownElements(scene.elements, markdownBlocks.map((b) => b.id)) as ExcalidrawElement[],
           // Falls back to the toolbar's default swatch when the scene has never
           // set a stroke color (brand-new note); an already-persisted value
           // (the user picked a color before) always wins.

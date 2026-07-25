@@ -1,4 +1,5 @@
 import { NOTE_SCHEMA_VERSION, type Note } from "./Note.js";
+import { migrateMdNoteFile } from "./migrations.js";
 import { mdNoteFileSchema } from "../validation/schemas.js";
 
 export interface MdNoteFile {
@@ -12,8 +13,10 @@ export function serializeMdNote(note: Note): string {
   return JSON.stringify(file, null, 2);
 }
 
+/** Old-shape files (schemaVersion 1) are migrated in-memory on read — the file on disk
+ * stays whatever version it was until the app next calls serializeMdNote/saveNote. */
 export function deserializeMdNote(raw: string): Note {
   const parsed: unknown = JSON.parse(raw);
   const file = mdNoteFileSchema.parse(parsed);
-  return file.note;
+  return migrateMdNoteFile(file);
 }

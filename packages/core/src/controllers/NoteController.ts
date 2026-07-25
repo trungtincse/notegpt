@@ -42,9 +42,41 @@ export class NoteController {
     return note;
   }
 
-  updateMarkdown(markdown: string): void {
+  /** Appends a new empty block and returns its id, so the caller can also place a matching
+   * embeddable on canvas (see AnnotationScene.ensureMarkdownElements). Deliberately does NOT
+   * touch `annotation.elements` itself — that's the canvas's job, backfilled lazily next time
+   * the annotation view mounts. */
+  addMarkdownBlock(): string {
+    if (!this.state.note) throw new Error("No note loaded");
+    const id = nanoid();
+    const note: Note = {
+      ...this.state.note,
+      markdownBlocks: [...this.state.note.markdownBlocks, { id, markdown: "" }],
+      updatedAt: new Date().toISOString(),
+    };
+    this.setState({ note, saveStatus: "dirty" });
+    this.scheduleSave();
+    return id;
+  }
+
+  updateMarkdownBlock(blockId: string, markdown: string): void {
     if (!this.state.note) return;
-    const note: Note = { ...this.state.note, markdown, updatedAt: new Date().toISOString() };
+    const markdownBlocks = this.state.note.markdownBlocks.map((b) => (b.id === blockId ? { ...b, markdown } : b));
+    const note: Note = { ...this.state.note, markdownBlocks, updatedAt: new Date().toISOString() };
+    this.setState({ note, saveStatus: "dirty" });
+    this.scheduleSave();
+  }
+
+  /** Counterpart to AnnotationController's gcUnreferencedFiles, but for note-owned block
+   * content: drops blocks whose matching canvas embeddable no longer exists (the user deleted
+   * it). No-op-guarded so calling it on every scene update doesn't spuriously mark the note
+   * dirty when nothing was actually deleted. */
+  pruneMarkdownBlocks(liveBlockIds: ReadonlySet<string>): void {
+    if (!this.state.note) return;
+    const { markdownBlocks } = this.state.note;
+    const pruned = markdownBlocks.filter((b) => liveBlockIds.has(b.id));
+    if (pruned.length === markdownBlocks.length) return;
+    const note: Note = { ...this.state.note, markdownBlocks: pruned, updatedAt: new Date().toISOString() };
     this.setState({ note, saveStatus: "dirty" });
     this.scheduleSave();
   }
@@ -110,7 +142,7 @@ export function createBlankNote(title: string): Note {
   return {
     id: nanoid(),
     title,
-    markdown: "",
+    markdownBlocks: [],
     annotation: createEmptyAnnotationScene(),
     schemaVersion: NOTE_SCHEMA_VERSION,
     createdAt: now,

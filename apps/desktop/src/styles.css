@@ -374,6 +374,99 @@ body {
   height: 100%;
 }
 
+/* One CodeMirror instance visible at a time, switched via a tab per markdown block —
+   the tab bar sits above a single full-height content pane. */
+.notegpt-markdown-pane.notegpt-markdown-tabbed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notegpt-markdown-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid #ddd;
+  overflow-x: auto;
+}
+
+.notegpt-markdown-tab {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #f2f2f3;
+  color: #444;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notegpt-markdown-tab.active {
+  background: #fff;
+  color: #1e1e1e;
+  font-weight: 600;
+}
+
+.notegpt-markdown-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f7f7f8;
+  color: #444;
+  cursor: pointer;
+}
+
+.notegpt-markdown-tab-add:hover {
+  background: #efeff0;
+}
+
+.notegpt-markdown-tab-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.notegpt-add-block-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: center;
+  padding: 7px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f7f7f8;
+  color: #1e1e1e;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.notegpt-add-block-btn:hover {
+  background: #efeff0;
+  border-color: #bbb;
+}
+
+.notegpt-add-block-btn:active {
+  background: #e6e6e7;
+}
+
+.notegpt-markdown-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+  color: #666;
+}
+
 .notegpt-toolbar {
   display: flex;
   align-items: center;
