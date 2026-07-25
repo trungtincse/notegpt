@@ -32,13 +32,15 @@ const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
  * viewport, so it drifts over the markdown text as the pane scrolls. This
  * toolbar, rendered outside the scrollable pane, replaces it.
  */
+// Highlighter (a special-cased "rectangle" tool, not a real ToolType — see
+// activateHighlighter) renders between Image and Eraser, so it's split out of this
+// list rather than appended after it.
 const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIcon }> = [
   { type: "selection", label: "Select", Icon: LassoSelect },
   { type: "hand", label: "Hand", Icon: Hand },
   { type: "freedraw", label: "Pen", Icon: Pencil },
   { type: "text", label: "Text", Icon: TextIcon },
   { type: "image", label: "Image", Icon: ImageIcon },
-  { type: "eraser", label: "Eraser", Icon: Eraser },
 ];
 
 /** Excalidraw's imperative API has no undo/delete methods, only `history.clear()`
@@ -117,6 +119,15 @@ export function Toolbar({ excalidrawApiRef }: ToolbarProps) {
         onClick={activateHighlighter}
       >
         <HighlighterIcon size={ICON_SIZE} />
+      </button>
+      <button
+        type="button"
+        title="Eraser"
+        aria-label="Eraser"
+        className={activeTool === "eraser" ? "active" : ""}
+        onClick={() => selectTool("eraser")}
+      >
+        <Eraser size={ICON_SIZE} />
       </button>
 
       <div className="notegpt-toolbar-divider" />
