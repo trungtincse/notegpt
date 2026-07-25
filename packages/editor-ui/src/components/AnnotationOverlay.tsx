@@ -1,4 +1,4 @@
-import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, FONT_FAMILY } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
-import { DEFAULT_STROKE_COLOR, MIN_STROKE_WIDTH } from "./Toolbar.js";
+import { DEFAULT_STROKE_COLOR, MIN_STROKE_WIDTH, PASTED_TEXT_COLOR } from "./Toolbar.js";
 
 export interface AnnotationOverlayProps {
   markdownBlocks: MarkdownBlock[];
@@ -136,6 +136,14 @@ export function AnnotationOverlay({
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
+  // Set by onPaste, consumed by the very next onChange: marks that whatever text elements
+  // show up new in that change came from a paste, so they can be corrected to read as normal
+  // body text (see below) instead of Excalidraw's default hand-drawn font/current draw color.
+  const justPastedRef = useRef(false);
+  // Snapshot of element ids as of the previous onChange, so the paste correction below can
+  // tell which elements in the new list are brand new rather than touching pre-existing ones.
+  const priorElementIdsRef = useRef<Set<string>>(new Set());
+
   // The Eraser tool erases whatever it's dragged across indiscriminately, same as any
   // other shape — sticky notes are unlocked (draggable/resizable, see ensureMarkdownElements)
   // so they're just as erasable by default, which isn't wanted: erasing is for hand-drawn
@@ -145,6 +153,27 @@ export function AnnotationOverlay({
   const handleExcalidrawChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       const api = apiRef.current;
+      const priorElementIds = priorElementIdsRef.current;
+      priorElementIdsRef.current = new Set(elements.map((el) => el.id));
+
+      // Pasted text should read as normal body text (Helvetica, matching the Text tool — see
+      // selectTool in Toolbar) in solid black, regardless of whatever color/font the user last
+      // drew with. This mutates the just-added element(s) directly (the same
+      // updateScene({ elements, captureUpdate: NEVER }) pattern as the eraser correction below)
+      // rather than toggling currentItem* appState from inside onPaste, which raced with
+      // Excalidraw's own paste handling and made the pasted text unselectable via box-select.
+      if (api && justPastedRef.current) {
+        justPastedRef.current = false;
+        const corrected = elements.map((el) =>
+          el.type === "text" && !priorElementIds.has(el.id)
+            ? { ...el, strokeColor: PASTED_TEXT_COLOR, fontFamily: FONT_FAMILY.Helvetica }
+            : el
+        );
+        api.updateScene({ elements: corrected, captureUpdate: CaptureUpdateAction.NEVER });
+        debouncedOnChange(corrected, appState, files);
+        return;
+      }
+
       if (api && appState.activeTool.type === "eraser") {
         let revivedAny = false;
         const corrected = elements.map((el) => {
@@ -338,6 +367,12 @@ export function AnnotationOverlay({
         // would try to open "notegpt:markdown" as a real link and fail.
         onLinkOpen={(element, event) => {
           if (isMarkdownElementId(element.id)) event.preventDefault();
+        }}
+        // See the paste-correction block in handleExcalidrawChange for why this only sets a
+        // flag instead of touching appState/elements here.
+        onPaste={() => {
+          justPastedRef.current = true;
+          return true;
         }}
         initialData={{
           elements: ensureMarkdownElements(scene.elements, markdownBlocks.map((b) => b.id)) as ExcalidrawElement[],

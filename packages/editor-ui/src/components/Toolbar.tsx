@@ -24,7 +24,10 @@ export const DEFAULT_STROKE_COLOR = "#ca0a0a";
 export const MIN_STROKE_WIDTH = 1;
 const ICON_SIZE = 18;
 
-const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", "#1e1e1e"];
+const BLACK_SWATCH = "#1e1e1e";
+export const PASTED_TEXT_COLOR = BLACK_SWATCH;
+
+const COLOR_SWATCHES = ["#ca0a0a", "#9c36b5", "#2f9e44", "#f5c518", BLACK_SWATCH];
 
 /**
  * Excalidraw's own floating toolbar/zoom/help/style-panel chrome is hidden via
