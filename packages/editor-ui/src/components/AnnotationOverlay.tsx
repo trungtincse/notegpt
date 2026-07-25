@@ -87,6 +87,13 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
+  // Centering has to wait for the *real* rendered height, not just the mount —
+  // a freshly pasted note's markdown element still carries its placeholder
+  // default height (see ensureMarkdownElement) until this callback's first
+  // measurement corrects it, so centering any earlier uses the wrong box size
+  // and lands off-center as soon as real content is taller/shorter than that.
+  const hasCenteredRef = useRef(false);
+
   const handleHeightChange = useCallback(
     (height: number) => {
       const api = apiRef.current;
@@ -94,39 +101,24 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
       const rounded = Math.round(height);
       const elements = api.getSceneElements();
       const target = elements.find((el) => el.id === MARKDOWN_ELEMENT_ID);
-      if (!target || Math.abs(target.height - rounded) < 1) return;
-      api.updateScene({
-        elements: elements.map((el) => (el.id === MARKDOWN_ELEMENT_ID ? { ...el, height: rounded } : el)),
-        captureUpdate: CaptureUpdateAction.NEVER,
-      });
+      if (!target) return;
+      if (Math.abs(target.height - rounded) >= 1) {
+        api.updateScene({
+          elements: elements.map((el) => (el.id === MARKDOWN_ELEMENT_ID ? { ...el, height: rounded } : el)),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }
+      if (centerOnMount && !hasCenteredRef.current) {
+        hasCenteredRef.current = true;
+        // Centers the camera on the markdown column specifically (with its now-
+        // accurate height) — centering on every scene element (via
+        // initialData.scrollToContent) skews off-center as soon as an
+        // annotation sits outside the column's own bounds.
+        api.scrollToContent({ ...target, height: rounded }, { fitToViewport: false, animate: false });
+      }
     },
-    [apiRef]
+    [apiRef, centerOnMount]
   );
-
-  // `excalidrawAPI` (the prop callback below) fires from inside Excalidraw's own
-  // constructor — before it has loaded any elements or measured its real
-  // container size — so centering the camera has to wait for this effect
-  // instead. Child components always finish mounting (Excalidraw's
-  // componentDidMount included) before a parent's own effects run, so by here
-  // the scene and container size are both ready.
-  //
-  // Note: this deliberately does NOT force the markdown embeddable's
-  // `activeEmbeddable` state to "active" on mount. Excalidraw gives an active
-  // embeddable's DOM content `pointer-events: auto` so it can be
-  // clicked/scrolled directly — which also means it swallows every pointer
-  // event meant for the canvas underneath, making draw tools (pen, highlighter)
-  // stop working anywhere over the text column.
-  useEffect(() => {
-    if (!centerOnMount) return;
-    const api = apiRef.current;
-    if (!api) return;
-    const markdownElement = api.getSceneElements().find((el) => el.id === MARKDOWN_ELEMENT_ID);
-    if (!markdownElement) return;
-    // Centers the camera on the markdown column specifically — centering on
-    // every scene element (via initialData.scrollToContent) skews off-center
-    // as soon as an annotation sits outside the column's own bounds.
-    api.scrollToContent(markdownElement, { fitToViewport: false, animate: false });
-  }, [apiRef, centerOnMount]);
 
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
