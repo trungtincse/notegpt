@@ -590,6 +590,15 @@ body {
   display: none;
 }
 
+/* Excalidraw requires every embeddable element to carry a non-empty `link` before it'll
+   even render it (see ensureMarkdownElements' MARKDOWN_EMBED_LINK placeholder) — but any
+   element with a link also gets Excalidraw's own hyperlink edit popup when selected. The
+   only elements in this app that ever have a link are markdown blocks, so hiding this
+   globally is safe: it's never a real, user-facing hyperlink to edit. */
+.notegpt-annotation-overlay .excalidraw-hyperlinkContainer {
+  display: none;
+}
+
 .notegpt-markdown-preview {
   padding: 16px 20px;
   line-height: 1.6;
