@@ -40,7 +40,7 @@ export function ensureMarkdownElement(elements: unknown[]): unknown[] {
     // Centered on the scene origin, which is what a fresh canvas (scrollX/Y at
     // their default of 0) shows in the middle of the viewport.
     x: 0,
-    y: -MARKDOWN_DEFAULT_HEIGHT / 2,
+    y: 0,
     width: MARKDOWN_TEXT_COLUMN_WIDTH,
     height: MARKDOWN_DEFAULT_HEIGHT,
     link: MARKDOWN_EMBED_LINK,

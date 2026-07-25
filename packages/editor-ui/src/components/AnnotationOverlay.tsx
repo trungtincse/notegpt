@@ -97,19 +97,35 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
     [apiRef]
   );
 
+  // `excalidrawAPI` (the prop callback below) fires from inside Excalidraw's own
+  // constructor — before it has loaded any elements or measured its real
+  // container size — so anything that needs actual scene content or viewport
+  // dimensions (forcing the embeddable active, centering the camera) has to
+  // wait for this effect instead. Child components always finish mounting
+  // (Excalidraw's componentDidMount included) before a parent's own effects
+  // run, so by here the scene and container size are both ready.
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const markdownElement = api.getSceneElements().find((el) => el.id === MARKDOWN_ELEMENT_ID);
+    if (!markdownElement) return;
+    // Excalidraw's embeddable elements normally require a double-click to "activate"
+    // (enable pointer events) before their content can be clicked/selected/scrolled —
+    // fine for embedding a video, wrong for a note's primary text. Force it active from
+    // the start so the markdown behaves like normal page text, not an embedded widget.
+    api.updateScene({
+      appState: { activeEmbeddable: { element: markdownElement, state: "active" } },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    // Centers the camera on the markdown column specifically — centering on
+    // every scene element (via initialData.scrollToContent) skews off-center
+    // as soon as an annotation sits outside the column's own bounds.
+    api.scrollToContent(markdownElement, { fitToViewport: false, animate: false });
+  }, [apiRef]);
+
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
-      // Excalidraw's embeddable elements normally require a double-click to "activate"
-      // (enable pointer events) before their content can be clicked/selected/scrolled —
-      // fine for embedding a video, wrong for a note's primary text. Force it active from
-      // the start so the markdown behaves like normal page text, not an embedded widget.
-      const markdownElement = api.getSceneElements().find((el) => el.id === MARKDOWN_ELEMENT_ID);
-      if (!markdownElement) return;
-      api.updateScene({
-        appState: { activeEmbeddable: { element: markdownElement, state: "active" } },
-        captureUpdate: CaptureUpdateAction.NEVER,
-      });
     },
     [apiRef]
   );
@@ -134,11 +150,6 @@ export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalA
           // (the user picked a color before) always wins.
           appState: { currentItemStrokeColor: DEFAULT_STROKE_COLOR, ...scene.appState } as Partial<AppState>,
           files: scene.files as BinaryFiles,
-          // Recenters the camera on the scene content (the markdown column, plus
-          // any annotations) every time the overlay mounts, so it sits in the
-          // middle of the canvas regardless of window size instead of relying on
-          // a fixed scene x/y.
-          scrollToContent: true,
         }}
         onChange={viewMode ? undefined : debouncedOnChange}
       />
