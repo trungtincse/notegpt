@@ -114,6 +114,35 @@ export function AnnotationOverlay({
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
+  // The Eraser tool erases whatever it's dragged across indiscriminately, same as any
+  // other shape — sticky notes are unlocked (draggable/resizable, see ensureMarkdownElements)
+  // so they're just as erasable by default, which isn't wanted: erasing is for hand-drawn
+  // annotations, not for deleting a note's text. Undoing the deletion right back keeps the
+  // *content* uneraseable while the Delete key (with the note actually selected) and the
+  // Markdown tab's own remove button both still work as the deliberate ways to remove one.
+  const handleExcalidrawChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      const api = apiRef.current;
+      if (api && appState.activeTool.type === "eraser") {
+        let revivedAny = false;
+        const corrected = elements.map((el) => {
+          if (el.isDeleted && isMarkdownElementId(el.id)) {
+            revivedAny = true;
+            return { ...el, isDeleted: false };
+          }
+          return el;
+        });
+        if (revivedAny) {
+          api.updateScene({ elements: corrected, captureUpdate: CaptureUpdateAction.NEVER });
+          debouncedOnChange(corrected, appState, files);
+          return;
+        }
+      }
+      debouncedOnChange(elements, appState, files);
+    },
+    [apiRef, debouncedOnChange]
+  );
+
   // Multi-block centering state, scoped to one mount of this component. Three past bugs
   // (all found the hard way — see git history on this file) must not be reintroduced:
   // (1) centering on the WHOLE scene skews off-center as soon as an annotation sits outside
@@ -235,7 +264,7 @@ export function AnnotationOverlay({
           appState: { currentItemStrokeColor: DEFAULT_STROKE_COLOR, ...scene.appState } as Partial<AppState>,
           files: scene.files as BinaryFiles,
         }}
-        onChange={viewMode ? undefined : debouncedOnChange}
+        onChange={viewMode ? undefined : handleExcalidrawChange}
       />
     </div>
   );
