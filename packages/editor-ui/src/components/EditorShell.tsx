@@ -33,7 +33,7 @@ export interface EditorShellProps {
  * switcher moves between the three.
  */
 export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenNoteLink, onPickNoteLink }: EditorShellProps) {
-  const { note, saveStatus, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
+  const { note, saveStatus, loadError, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
     useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -86,6 +86,15 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
       return typeof e.id === "string" && !isMarkdownElementId(e.id) && !e.isDeleted;
     });
     if (hasMarkdownContent || hasAnnotationContent) setMode("view");
+  }
+
+  if (loadedId === noteId && loadError) {
+    return (
+      <div className="notegpt-editor-shell-error">
+        <p>Couldn't open this note — the file may have been moved, renamed, or deleted.</p>
+        <p className="notegpt-editor-shell-error-detail">{loadError}</p>
+      </div>
+    );
   }
 
   if (!note || loadedId !== noteId) {

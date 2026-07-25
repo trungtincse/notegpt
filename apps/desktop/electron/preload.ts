@@ -36,6 +36,11 @@ export const mdnoteApi = {
     ipcRenderer.on("mdnote:menu-new-note", listener);
     return () => ipcRenderer.removeListener("mdnote:menu-new-note", listener);
   },
+  onMenuShowGuideline: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("mdnote:menu-show-guideline", listener);
+    return () => ipcRenderer.removeListener("mdnote:menu-show-guideline", listener);
+  },
 };
 
 export type MdnoteApi = typeof mdnoteApi;

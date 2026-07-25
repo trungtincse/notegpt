@@ -223,6 +223,18 @@ export function App() {
     }
   }, []);
 
+  // Help > Guideline — reopens the same bundled intro note first-launch shows, on demand
+  // (unlike the first-launch flow, this doesn't touch hasSeenWelcome; it's just "show me that
+  // note again", not a first-run event). ensureWelcomeNoteFile() is idempotent — it only seeds
+  // the file the very first time it's ever called, so this just resolves its (by-now-existing)
+  // path the rest of the time.
+  const handleShowGuideline = useCallback(async () => {
+    const filePath = await window.mdnote.ensureWelcomeNoteFile();
+    setWelcomeFilePath(filePath);
+    setSelectedFilePath(null);
+    setShowingWelcome(true);
+  }, []);
+
   // Opens in its own window (see main.ts's openNoteInNewWindow/createWindow) rather than
   // replacing the current one, so clicking a link to another note doesn't lose your place in
   // the note you clicked it from.
@@ -295,11 +307,13 @@ export function App() {
   useEffect(() => {
     const offOpenFolder = window.mdnote.onMenuOpenFolder(() => void handleOpenFolder());
     const offNewNote = window.mdnote.onMenuNewNote(() => void handleNewNote());
+    const offShowGuideline = window.mdnote.onMenuShowGuideline(() => void handleShowGuideline());
     return () => {
       offOpenFolder();
       offNewNote();
+      offShowGuideline();
     };
-  }, [handleOpenFolder, handleNewNote]);
+  }, [handleOpenFolder, handleNewNote, handleShowGuideline]);
 
   const renderRowActions = (entry: NoteListEntry, sectionId: string) => {
     const isPinned = pinnedSet.has(entry.filePath);
@@ -493,9 +507,18 @@ export function App() {
       </aside>
       <main className="notegpt-main">
         {selectedFilePath ? (
+          // storage is deliberately always pathAdapter, never `adapter` (which is folderPath-
+          // scoped and starts null until getLastFolder() resolves): folderPath only matters for
+          // createNote/listNotes, neither of which EditorShell ever calls, so there's no reason
+          // for its storage prop to change identity after mount. It used to fall back to
+          // `adapter ?? pathAdapter`, but `adapter` flipping from null to a real instance
+          // shortly after a note-link-opened window mounts made useNoteController build a brand
+          // new NoteController mid-load — unsubscribing from the in-flight load right as it was
+          // about to resolve, with nothing left to ever call load() again on the new one. That
+          // silently stuck the note on its loading state forever, with no error to point at it.
           <EditorShell
             key={`${selectedFilePath}:${reloadToken}`}
-            storage={adapter ?? pathAdapter}
+            storage={pathAdapter}
             noteId={selectedFilePath}
             onOpenNoteLink={handleOpenNoteLink}
             onPickNoteLink={window.mdnote.pickMdnoteFile}

@@ -90,6 +90,12 @@ function buildMenu(): void {
     },
     { role: "editMenu" },
     { role: "viewMenu" },
+    {
+      label: "Help",
+      submenu: [
+        { label: "Guideline", click: () => mainWindow?.webContents.send("mdnote:menu-show-guideline") },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

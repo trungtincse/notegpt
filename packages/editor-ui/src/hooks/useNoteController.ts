@@ -17,6 +17,7 @@ export function useNoteController(storage: StorageAdapter) {
     controller,
     note: state.note,
     saveStatus: state.saveStatus,
+    loadError: state.loadError,
     load: (id: string) => controller.load(id),
     createNew: (title: string) => controller.createNew(title),
     save: () => controller.save(),

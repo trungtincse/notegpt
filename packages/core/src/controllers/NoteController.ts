@@ -8,6 +8,9 @@ export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 export interface NoteControllerState {
   note: Note | null;
   saveStatus: SaveStatus;
+  /** Set when the most recent load() failed (e.g. the file was deleted/renamed out from under
+   * a stale link) — cleared on the next successful load. Null while nothing has gone wrong. */
+  loadError: string | null;
 }
 
 type Listener = (state: NoteControllerState) => void;
@@ -15,7 +18,7 @@ type Listener = (state: NoteControllerState) => void;
 const AUTOSAVE_DELAY_MS = 500;
 
 export class NoteController {
-  private state: NoteControllerState = { note: null, saveStatus: "idle" };
+  private state: NoteControllerState = { note: null, saveStatus: "idle", loadError: null };
   private listeners = new Set<Listener>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -30,10 +33,17 @@ export class NoteController {
     return () => this.listeners.delete(listener);
   }
 
+  // Deliberately never rejects: a stale link (the file got deleted or renamed out from under
+  // it — see LocalFsStorageAdapter.renameNote) is an expected failure mode, not a bug to crash
+  // on. Callers (see EditorShell) just check `loadError` afterward instead of try/catching.
   async load(id: string): Promise<void> {
-    const note = await this.storage.loadNote(id);
-    note.annotation = await this.storage.resolveAssetsForRead(note.annotation);
-    this.setState({ note, saveStatus: "idle" });
+    try {
+      const note = await this.storage.loadNote(id);
+      note.annotation = await this.storage.resolveAssetsForRead(note.annotation);
+      this.setState({ note, saveStatus: "idle", loadError: null });
+    } catch (error) {
+      this.setState({ note: null, saveStatus: "idle", loadError: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async createNew(title: string): Promise<Note> {
@@ -157,8 +167,8 @@ export class NoteController {
     }
   }
 
-  private setState(next: NoteControllerState): void {
-    this.state = next;
+  private setState(next: Partial<NoteControllerState>): void {
+    this.state = { ...this.state, ...next };
     for (const listener of this.listeners) listener(this.state);
   }
 }
