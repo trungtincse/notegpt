@@ -1,4 +1,4 @@
-import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, type Note } from "@notegpt/core";
+import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, type Note } from "@notegpt/core";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 
@@ -9,7 +9,7 @@ import { promises as fs } from "node:fs";
 const PRINT_READY_TIMEOUT_MS = 8000;
 const FALLBACK_WINDOW_HEIGHT = 800;
 // Padding (px) around the scene's content bounds — matches PrintView.tsx's own
-// CONTENT_PADDING (keep both in sync — see its comment on why 100, not a tighter value),
+// CONTENT_PADDING (keep both in sync — see its comment on why 150, not a tighter value),
 // so the print window's width is sized to exactly what PrintView will actually render.
 const CONTENT_PADDING = 150;
 // Chromium's print pipeline lays out HTML at the window's actual CSS pixel width and, by
@@ -29,7 +29,9 @@ const CSS_PX_PER_INCH = 96;
  */
 function getPrintWidth(note: Note): number {
   const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
-  const { minX, maxX } = getSceneBounds(elements);
+  // Only visible elements count toward sizing — see PrintView.tsx's matching filter for why
+  // (an invisible leftover stroke shouldn't be able to stretch the page out around nothing).
+  const { minX, maxX } = getSceneBounds(elements.filter(isVisiblyRendered));
   return Math.ceil(maxX - minX) + CONTENT_PADDING * 2;
 }
 

@@ -1,4 +1,4 @@
-import { ensureMarkdownElements, getSceneBounds, type Note } from "@notegpt/core";
+import { ensureMarkdownElements, getSceneBounds, isVisiblyRendered, type Note } from "@notegpt/core";
 import { AnnotationOverlay } from "@notegpt/editor-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
@@ -61,7 +61,13 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
   const printScene = useMemo(() => {
     if (!note) return null;
     const elements = ensureMarkdownElements(note.annotation.elements, note.markdownBlocks.map((b) => b.id));
-    const { minX, minY, maxX, maxY } = getSceneBounds(elements);
+    // Sizing/positioning is based on only the *visible* elements — an invisible leftover
+    // stroke (fully transparent stroke and fill, e.g. drawn with the wrong color mid-testing
+    // and never cleaned up) still has real x/y/width/height and would otherwise stretch the
+    // page out around space nobody can see anything in, throwing left/right margins off
+    // balance. All elements are still rendered (nothing is deleted here), just not counted
+    // for bounds.
+    const { minX, minY, maxX, maxY } = getSceneBounds(elements.filter(isVisiblyRendered));
     return {
       scene: {
         ...note.annotation,

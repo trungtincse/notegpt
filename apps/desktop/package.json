@@ -1,6 +1,9 @@
 {
   "name": "@notegpt/desktop",
   "version": "0.0.1",
+  "description": "Markdown notes with hand-drawn annotations",
+  "author": "notegpt",
+  "homepage": "https://github.com/trungtincse/notegpt",
   "private": true,
   "type": "module",
   "main": "./out/main/main.js",
@@ -8,6 +11,9 @@
     "dev": "concurrently -k -n core,editor-ui,electron -c yellow,magenta,cyan \"pnpm --filter @notegpt/core dev\" \"pnpm --filter @notegpt/editor-ui dev\" \"ELECTRON_DISABLE_SANDBOX=1 electron-vite dev\"",
     "build": "electron-vite build",
     "preview": "ELECTRON_DISABLE_SANDBOX=1 electron-vite preview",
+    "dist": "electron-vite build && electron-builder --linux",
+    "dist:appimage": "electron-vite build && electron-builder --linux AppImage",
+    "dist:win": "electron-vite build && electron-builder --win",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint electron src",
     "test": "echo \"no tests yet\" && exit 0"

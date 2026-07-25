@@ -105,6 +105,31 @@ export interface SceneBounds {
   maxY: number;
 }
 
+interface StyledElementLike {
+  type?: string;
+  strokeColor?: string;
+  backgroundColor?: string;
+  isDeleted?: boolean;
+}
+
+/**
+ * Whether `element` actually paints anything a viewer could see — a freedraw/line/rectangle
+ * with both stroke and fill set to "transparent" renders nothing at all, but still has a
+ * normal x/y/width/height like any other element. Meant for callers (print/PDF export) that
+ * size a page around the *visible* content: an invisible leftover stroke (e.g. drawn with the
+ * wrong color mid-testing, then never cleaned up) shouldn't be able to stretch the page out
+ * around space nobody can see anything in. Images/embeddables/iframes/frames always count as
+ * visible regardless of stroke/background, since those properties don't govern their content.
+ */
+export function isVisiblyRendered(element: unknown): boolean {
+  const el = element as StyledElementLike;
+  if (el.isDeleted) return false;
+  if (el.type === "image" || el.type === "embeddable" || el.type === "iframe" || el.type === "frame") return true;
+  const strokeInvisible = el.strokeColor === "transparent";
+  const backgroundInvisible = !el.backgroundColor || el.backgroundColor === "transparent";
+  return !(strokeInvisible && backgroundInvisible);
+}
+
 interface BoundedElementLike {
   x?: number;
   y?: number;

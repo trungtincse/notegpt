@@ -4,6 +4,7 @@ import {
   ensureMarkdownElements,
   getLiveMarkdownBlockIds,
   isMarkdownElementId,
+  isVisiblyRendered,
   LEGACY_MARKDOWN_ELEMENT_ID,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   parseMarkdownElementId,
@@ -69,5 +70,28 @@ describe("ensureMarkdownElements", () => {
     const result = ensureMarkdownElements([], ["b1", "b2"]) as { id: string; x: number }[];
     expect(result).toHaveLength(2);
     expect(result[1].x - result[0].x).toBeGreaterThanOrEqual(MARKDOWN_TEXT_COLUMN_WIDTH);
+  });
+});
+
+describe("isVisiblyRendered", () => {
+  it("is false for a freedraw stroke with transparent color (nothing to see)", () => {
+    expect(isVisiblyRendered({ type: "freedraw", strokeColor: "transparent", backgroundColor: "transparent" })).toBe(false);
+  });
+
+  it("is true for a freedraw stroke with a real color", () => {
+    expect(isVisiblyRendered({ type: "freedraw", strokeColor: "#ca0a0a", backgroundColor: "transparent" })).toBe(true);
+  });
+
+  it("is true for a highlighter-style rectangle (transparent stroke, real fill)", () => {
+    expect(isVisiblyRendered({ type: "rectangle", strokeColor: "transparent", backgroundColor: "#ffd43b" })).toBe(true);
+  });
+
+  it("is false for a deleted (tombstoned) element regardless of color", () => {
+    expect(isVisiblyRendered({ type: "freedraw", strokeColor: "#ca0a0a", isDeleted: true })).toBe(false);
+  });
+
+  it("always treats images/embeddables as visible regardless of stroke/background", () => {
+    expect(isVisiblyRendered({ type: "image", strokeColor: "transparent", backgroundColor: "transparent" })).toBe(true);
+    expect(isVisiblyRendered({ type: "embeddable", strokeColor: "transparent", backgroundColor: "transparent" })).toBe(true);
   });
 });

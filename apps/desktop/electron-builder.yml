@@ -1,0 +1,20 @@
+appId: com.notegpt.desktop
+productName: NoteGPT
+executableName: NoteGPT
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  maintainer: notegpt
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+win:
+  target:
+    - nsis
+  artifactName: "${productName}-${version}-setup.${ext}"
