@@ -5,7 +5,6 @@ export const annotationSceneSchema = z.object({
   elements: z.array(z.unknown()),
   appState: z.record(z.string(), z.unknown()),
   files: z.record(z.string(), z.unknown()),
-  paneWidth: z.number().optional(),
 });
 
 export const noteSchema = z.object({

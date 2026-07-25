@@ -22,8 +22,8 @@ export function gcUnreferencedFiles(scene: AnnotationScene): AnnotationScene {
 export class AnnotationController {
   constructor(private readonly noteController: NoteController) {}
 
-  updateScene(elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>, paneWidth: number): void {
-    const scene = gcUnreferencedFiles({ elements, appState, files, paneWidth });
+  updateScene(elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>): void {
+    const scene = gcUnreferencedFiles({ elements, appState, files });
 
     // Excalidraw's onChange fires continuously even without user interaction
     // (internal appState churn). Skip the update entirely when nothing the app

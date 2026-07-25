@@ -1,35 +1,20 @@
 import { join, extname } from "node:path";
-import { ipcMain, dialog, screen, BrowserWindow, app, Menu } from "electron";
-import { deserializeMdNote, serializeMdNote, createBlankNote } from "@notegpt/core";
+import { ipcMain, dialog, BrowserWindow, app, Menu } from "electron";
+import { deserializeMdNote, ensureMarkdownElement, getSceneBounds, serializeMdNote, createBlankNote } from "@notegpt/core";
 import { promises } from "node:fs";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 const require2 = __cjs_mod__.createRequire(import.meta.url);
 const PRINT_READY_TIMEOUT_MS = 5e3;
-const SIDEBAR_WIDTH = 260;
-const TEXT_COLUMN_WIDTH = 900;
-const FALLBACK_PRINT_SIZE = { width: 1200 - SIDEBAR_WIDTH, height: 800 };
+const FALLBACK_WINDOW_HEIGHT = 800;
+const CONTENT_PADDING = 40;
 const CSS_PX_PER_INCH = 96;
 const PAGE_HEIGHT_INCHES = 11.69;
-function hasMarginAnnotation(note, fallbackWidth) {
-  const annotation = note.annotation;
-  const referenceWidth = FALLBACK_PRINT_SIZE.width;
-  const appState = annotation.appState ?? {};
-  const scrollX = typeof appState.scrollX === "number" ? appState.scrollX : 0;
-  const zoom = typeof appState.zoom?.value === "number" ? appState.zoom.value : 1;
-  const marginLeft = Math.max(0, (referenceWidth - TEXT_COLUMN_WIDTH) / 2);
-  const columnRight = marginLeft + Math.min(TEXT_COLUMN_WIDTH, referenceWidth);
-  const CLEARANCE = 1;
-  const elements = annotation.elements ?? [];
-  return elements.some((el) => {
-    if (el.isDeleted) return false;
-    const x = typeof el.x === "number" ? el.x : 0;
-    const width = typeof el.width === "number" ? el.width : 0;
-    const screenMinX = (x - scrollX) * zoom;
-    const screenMaxX = (x + width - scrollX) * zoom;
-    return screenMinX < marginLeft - CLEARANCE || screenMaxX > columnRight + CLEARANCE;
-  });
+function getPrintWidth(note) {
+  const elements = ensureMarkdownElement(note.annotation.elements);
+  const { minX, maxX } = getSceneBounds(elements);
+  return Math.ceil(maxX - minX) + CONTENT_PADDING * 2;
 }
 function buildPrintUrl(folderPath, filePath, options) {
   const query = { print: "1", folder: folderPath, file: filePath };
@@ -74,10 +59,9 @@ function registerExportHandlers(getWindow, options) {
         };
         const saveResult = win ? await dialog.showSaveDialog(win, saveDialogOptions) : await dialog.showSaveDialog(saveDialogOptions);
         if (saveResult.canceled || !saveResult.filePath) return null;
-        const [, mainHeight] = win?.getContentSize() ?? [FALLBACK_PRINT_SIZE.width + SIDEBAR_WIDTH, FALLBACK_PRINT_SIZE.height];
+        const [, mainHeight] = win?.getContentSize() ?? [0, FALLBACK_WINDOW_HEIGHT];
         const note = deserializeMdNote(await promises.readFile(filePath, "utf-8"));
-        const fullScreenWidth = screen.getPrimaryDisplay().workAreaSize.width - SIDEBAR_WIDTH;
-        const printWidth = hasMarginAnnotation(note, fullScreenWidth) ? fullScreenWidth : TEXT_COLUMN_WIDTH;
+        const printWidth = getPrintWidth(note);
         printWin = new BrowserWindow({
           show: false,
           width: printWidth,

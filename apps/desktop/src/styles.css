@@ -349,28 +349,6 @@ body {
   display: none; /* Chromium/Electron — stays scrollable, just no visible track */
 }
 
-/* Auto-height wrapper around the preview + its annotation overlay: giving
-   AnnotationOverlay's `inset: 0` an auto-sized (content-height) containing
-   block instead of the scroll pane's fixed viewport height means it spans
-   the full document, not just the first screenful — so scrolling the pane
-   moves the rendered text and its annotations together as a single surface
-   instead of the overlay running out partway down and drifting apart. */
-.notegpt-markdown-content {
-  position: relative;
-}
-
-/* The reading column is capped for legibility, but this only wraps the text —
-   AnnotationOverlay is a sibling, not a child, so its full-pane-width `inset: 0`
-   isn't shrunk to match, leaving open margin on both sides to draw in. Unlike a
-   fixed 50% pane it shrinks on narrow windows, and in view mode the
-   ZoomableViewport around the whole thing still spans the full pane width, so
-   panning and zooming has the whole window to work with. */
-.notegpt-markdown-content-inner {
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
 .notegpt-annotate-pane {
   display: flex;
   flex-direction: column;
@@ -378,9 +356,12 @@ body {
   min-width: 0;
 }
 
+/* Excalidraw's own camera is the only scrolling/panning mechanism here now
+   (the markdown text is a scene element, not a separate scrollable layer). */
 .notegpt-annotate-pane .notegpt-markdown-pane {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .notegpt-codemirror-editor {
@@ -456,17 +437,14 @@ body {
 }
 
 .notegpt-annotation-overlay {
-  z-index: 10;
+  width: 100%;
+  height: 100%;
 }
 
-/* The drawing tools live in .notegpt-toolbar instead, which sits outside the
-   scrollable pane and so is always in the right place. Excalidraw's own
-   toolbar/zoom/help/style-panel chrome is anchored to the edges of the
-   annotation overlay rather than the actual viewport, so it drifts over the
-   markdown text as the pane scrolls — hide all of it. In view mode, its zoom
-   control would only zoom the annotation canvas (not the markdown text under
-   it), so it stays hidden there too — ZoomableViewport's own controls zoom
-   both together instead. */
+/* The drawing tools live in .notegpt-toolbar instead — hide Excalidraw's own
+   toolbar/menu/style-panel chrome entirely. Its zoom controls stay hidden too:
+   panning/zooming is done via wheel, trackpad, or Excalidraw's own keyboard
+   shortcuts (now left enabled, since its camera is the real one in use). */
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper {
   display: none;
 }
@@ -480,57 +458,6 @@ body {
 .notegpt-annotation-overlay .excalidraw .welcome-screen-center,
 .notegpt-annotation-overlay .excalidraw .welcome-screen-decor {
   display: none;
-}
-
-.notegpt-zoom-viewport {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  touch-action: none;
-  cursor: grab;
-}
-
-.notegpt-zoom-viewport--dragging {
-  cursor: grabbing;
-}
-
-.notegpt-zoom-surface {
-  transform-origin: 0 0;
-  user-select: none;
-}
-
-.notegpt-zoom-controls {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
-  border-radius: 999px;
-  background: #26262b;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-}
-
-.notegpt-zoom-controls button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 6px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: #d7d7db;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.notegpt-zoom-controls button:hover {
-  background: #3a3a41;
 }
 
 .notegpt-markdown-preview {

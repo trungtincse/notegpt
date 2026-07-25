@@ -1,7 +1,10 @@
-import type { Note } from "@notegpt/core";
-import { AnnotationOverlay, MarkdownPreview } from "@notegpt/editor-ui";
-import { useEffect, useState } from "react";
+import { ensureMarkdownElement, getSceneBounds, type Note } from "@notegpt/core";
+import { AnnotationOverlay } from "@notegpt/editor-ui";
+import { useEffect, useMemo, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
+
+// Padding (px) around the scene's content bounds so nothing sits flush against the page edge.
+const CONTENT_PADDING = 40;
 
 /** Waits two animation frames — letting Excalidraw's canvas actually paint — before
  * resolving, instead of guessing a fixed delay that could either race ahead of the
@@ -33,16 +36,36 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
     void waitTwoAnimationFrames().then(() => window.mdnote.notifyPrintReady());
   }, [note]);
 
-  if (!note) return null;
+  // Excalidraw is a fixed-viewport camera, not an auto-growing document — unlike the
+  // old two-layer DOM composition, the print window must be explicitly sized and
+  // scrolled to fit the *entire* scene, using the scene's own content bounds.
+  const printScene = useMemo(() => {
+    if (!note) return null;
+    const elements = ensureMarkdownElement(note.annotation.elements);
+    const { minX, minY, maxX, maxY } = getSceneBounds(elements);
+    return {
+      scene: {
+        ...note.annotation,
+        elements,
+        appState: {
+          ...note.annotation.appState,
+          scrollX: -minX + CONTENT_PADDING,
+          scrollY: -minY + CONTENT_PADDING,
+          zoom: { value: 1 },
+        },
+      },
+      width: Math.ceil(maxX - minX) + CONTENT_PADDING * 2,
+      height: Math.ceil(maxY - minY) + CONTENT_PADDING * 2,
+    };
+  }, [note]);
+
+  if (!note || !printScene) return null;
 
   return (
     <div className="notegpt-print-page">
       <h1 className="notegpt-print-title">{note.title}</h1>
-      <div className="notegpt-markdown-content">
-        <div className="notegpt-markdown-content-inner">
-          <MarkdownPreview markdown={note.markdown} />
-        </div>
-        <AnnotationOverlay scene={note.annotation} onChange={() => {}} viewMode />
+      <div style={{ position: "relative", width: printScene.width, height: printScene.height }}>
+        <AnnotationOverlay markdown={note.markdown} scene={printScene.scene} onChange={() => {}} viewMode />
       </div>
     </div>
   );

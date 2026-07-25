@@ -6,9 +6,7 @@ import { useAnnotationController } from "../hooks/useAnnotationController.js";
 import { useNoteController } from "../hooks/useNoteController.js";
 import { AnnotationOverlay } from "./AnnotationOverlay.js";
 import { CodeMirrorEditor } from "./CodeMirrorEditor.js";
-import { MarkdownPreview } from "./MarkdownPreview.js";
 import { Toolbar } from "./Toolbar.js";
-import { ZoomableViewport } from "./ZoomableViewport.js";
 
 export interface EditorShellProps {
   storage: StorageAdapter;
@@ -20,9 +18,12 @@ type ShellMode = "markdown" | "annotation" | "view";
 /**
  * Composition root for the editor, split into three independent sections
  * shown one at a time: the raw markdown source, an editable Excalidraw
- * annotation overlay atop the rendered preview, and a read-only preview
- * that's pannable/zoomable as one flat surface via ZoomableViewport. A
- * header switcher moves between the three.
+ * annotation overlay (markdown text lives inside the same scene as a
+ * locked embeddable element — see AnnotationOverlay), and a read-only
+ * view of that same scene. Annotation and view modes share the exact
+ * same rendering, differing only in whether editing/drawing is enabled —
+ * Excalidraw's own camera provides pan/zoom for both. A header switcher
+ * moves between the three.
  */
 export function EditorShell({ storage, noteId }: EditorShellProps) {
   const { note, saveStatus, load, updateMarkdown, controller } = useNoteController(storage);
@@ -46,25 +47,6 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
   if (!note || loadedId !== noteId) {
     return <div className="notegpt-editor-shell-loading">Loading…</div>;
   }
-
-  const preview = (
-    // The text column is capped/centered via the inner wrapper for legibility, but
-    // AnnotationOverlay is a direct child of the full-width outer div — its `inset: 0`
-    // resolves against that, not the capped column — so the drawing canvas spans the
-    // whole pane and leaves room to annotate in the margins beside the text.
-    <div className="notegpt-markdown-content">
-      <div className="notegpt-markdown-content-inner">
-        <MarkdownPreview markdown={note.markdown} />
-      </div>
-      <AnnotationOverlay
-        key={note.id}
-        apiRef={excalidrawApiRef}
-        scene={note.annotation}
-        onChange={updateScene}
-        viewMode={mode === "view"}
-      />
-    </div>
-  );
 
   return (
     <div className="notegpt-editor-shell">
@@ -112,16 +94,18 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
             <CodeMirrorEditor docId={note.id} initialValue={note.markdown} editable onChange={updateMarkdown} />
           </div>
         )}
-        {mode === "annotation" && (
+        {(mode === "annotation" || mode === "view") && (
           <div className="notegpt-annotate-pane">
-            <Toolbar excalidrawApiRef={excalidrawApiRef} />
-            <div className="notegpt-markdown-pane">{preview}</div>
-          </div>
-        )}
-        {mode === "view" && (
-          <div className="notegpt-annotate-pane">
+            {mode === "annotation" && <Toolbar excalidrawApiRef={excalidrawApiRef} />}
             <div className="notegpt-markdown-pane">
-              <ZoomableViewport key={note.id}>{preview}</ZoomableViewport>
+              <AnnotationOverlay
+                key={note.id}
+                apiRef={excalidrawApiRef}
+                markdown={note.markdown}
+                scene={note.annotation}
+                onChange={updateScene}
+                viewMode={mode === "view"}
+              />
             </div>
           </div>
         )}

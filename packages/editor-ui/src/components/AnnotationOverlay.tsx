@@ -1,16 +1,19 @@
-import { Excalidraw } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import type { AnnotationScene } from "@notegpt/core";
-import { type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, useRef } from "react";
+import { ensureMarkdownElement, MARKDOWN_ELEMENT_ID, MARKDOWN_TEXT_COLUMN_WIDTH, type AnnotationScene } from "@notegpt/core";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
+import { MarkdownPreview } from "./MarkdownPreview.js";
 
 export interface AnnotationOverlayProps {
+  markdown: string;
   scene: AnnotationScene;
-  onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>, paneWidth: number) => void;
+  onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
-  /** Read-only: disables editing. Pan/zoom in this mode is driven externally (see ZoomableViewport), not by Excalidraw itself. */
+  /** Read-only: disables editing via Excalidraw's own view mode. Panning/zooming
+   * (Excalidraw's native camera) works the same in both modes. */
   viewMode?: boolean;
 }
 
@@ -38,93 +41,94 @@ function pickPersistedAppState(appState: AppState): Record<string, unknown> {
   return picked;
 }
 
-/**
- * Matches Excalidraw's own zoomIn/zoomOut/resetZoom/zoomToFit* keyboard shortcuts
- * (Ctrl/Cmd or Shift + =/-/0, and Shift+1/2/3). Those actions are registered with
- * `viewMode: true` in Excalidraw, so they fire even though our overlay never shows
- * its zoom UI — left alone, they'd change the annotation canvas's own zoom/scroll
- * independently of the markdown text underneath, which has no such camera of its
- * own and can't follow along, desyncing the two layers.
- */
-function isExcalidrawZoomShortcut(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
-  const ctrlOrCmd = event.ctrlKey || event.metaKey;
-  switch (event.code) {
-    case "Equal":
-    case "NumpadAdd":
-    case "Minus":
-    case "NumpadSubtract":
-    case "Digit0":
-    case "Numpad0":
-      return ctrlOrCmd || event.shiftKey;
-    case "Digit1":
-    case "Digit2":
-    case "Digit3":
-      return event.shiftKey && !event.altKey && !ctrlOrCmd;
-    default:
-      return false;
-  }
+/** Renders the note's markdown at the fixed column width and reports its natural
+ * (content-driven) height, so the embeddable element's box can be kept in sync. */
+function MarkdownEmbeddable({ markdown, onHeightChange }: { markdown: string; onHeightChange: (height: number) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const onHeightChangeRef = useRef(onHeightChange);
+  onHeightChangeRef.current = onHeightChange;
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    // ResizeObserver (not a one-off measurement) because markdown can contain images
+    // that load asynchronously and change the natural height after first paint.
+    const observer = new ResizeObserver(([entry]) => {
+      const height = entry?.borderBoxSize?.[0]?.blockSize ?? entry?.contentRect.height;
+      if (typeof height === "number") onHeightChangeRef.current(height);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ width: MARKDOWN_TEXT_COLUMN_WIDTH }}>
+      <MarkdownPreview markdown={markdown} />
+    </div>
+  );
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
-
-export function AnnotationOverlay({ scene, onChange, apiRef: externalApiRef, viewMode = false }: AnnotationOverlayProps) {
+export function AnnotationOverlay({ markdown, scene, onChange, apiRef: externalApiRef, viewMode = false }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  // Read at the moment the (debounced) save actually fires, not when it's scheduled, so it
-  // reflects the pane's current size — this is what later lets a consumer (PDF export) know
-  // whether elements sit under the centered text column or extend into the margins beside it.
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const debouncedOnChange = useRef(
     debounce((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      const paneWidth = containerRef.current?.clientWidth ?? 0;
-      onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>, paneWidth);
+      onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>);
     }, CHANGE_DEBOUNCE_MS)
   ).current;
 
+  const handleHeightChange = useCallback(
+    (height: number) => {
+      const api = apiRef.current;
+      if (!api) return;
+      const rounded = Math.round(height);
+      const elements = api.getSceneElements();
+      const target = elements.find((el) => el.id === MARKDOWN_ELEMENT_ID);
+      if (!target || Math.abs(target.height - rounded) < 1) return;
+      api.updateScene({
+        elements: elements.map((el) => (el.id === MARKDOWN_ELEMENT_ID ? { ...el, height: rounded } : el)),
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+    },
+    [apiRef]
+  );
+
+  const excalidrawAPI = useCallback(
+    (api: ExcalidrawImperativeAPI) => {
+      apiRef.current = api;
+      // Excalidraw's embeddable elements normally require a double-click to "activate"
+      // (enable pointer events) before their content can be clicked/selected/scrolled —
+      // fine for embedding a video, wrong for a note's primary text. Force it active from
+      // the start so the markdown behaves like normal page text, not an embedded widget.
+      const markdownElement = api.getSceneElements().find((el) => el.id === MARKDOWN_ELEMENT_ID);
+      if (!markdownElement) return;
+      api.updateScene({
+        appState: { activeEmbeddable: { element: markdownElement, state: "active" } },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+    },
+    [apiRef]
+  );
+
   return (
-    <div
-      ref={containerRef}
-      className="notegpt-annotation-overlay"
-      // In view mode Excalidraw must not receive any pointer input at all — it has its
-      // own drag-to-pan behavior which would move only the annotation canvas, not the
-      // markdown text underneath, the moment a stray mousedown/drag reached it. Making
-      // it pointer-events: none hands *all* mouse/touch interaction to ZoomableViewport
-      // (an ancestor), which pans/zooms both layers together as one surface instead.
-      style={{ position: "absolute", inset: 0, pointerEvents: viewMode ? "none" : "auto" }}
-      // Excalidraw's own wheel handler (attached natively on its container) hijacks
-      // wheel/trackpad input to pan+zoom its own infinite canvas. In edit mode that
-      // stops the markdown pane underneath from ever scrolling, so it's stopped here,
-      // in the capture phase, before it reaches Excalidraw's listener — the browser
-      // then falls through to its default action (scrolling the markdown pane). In view
-      // mode, pointer-events: none above already keeps wheel events from ever reaching
-      // Excalidraw in the first place, so this handler is edit-mode-only in practice.
-      onWheelCapture={(event) => event.stopPropagation()}
-      // Same reasoning as onWheelCapture above, but for Excalidraw's zoom keyboard
-      // shortcuts: stop them here, before they reach Excalidraw's own listener, so
-      // the only way to zoom stays ZoomableViewport driving both layers together.
-      // Left through when focus is on an actual text input so typing "+"/"-"/"0"
-      // into an annotation text element (or elsewhere on the page) still works.
-      onKeyDownCapture={(event) => {
-        if (isEditableTarget(event.target) || !isExcalidrawZoomShortcut(event)) return;
-        event.stopPropagation();
-      }}
-    >
+    <div className="notegpt-annotation-overlay">
       <Excalidraw
-        excalidrawAPI={(api) => {
-          apiRef.current = api;
-        }}
+        excalidrawAPI={excalidrawAPI}
         viewModeEnabled={viewMode}
+        validateEmbeddable
+        renderEmbeddable={(element) => (element.id === MARKDOWN_ELEMENT_ID ? <MarkdownEmbeddable markdown={markdown} onHeightChange={handleHeightChange} /> : null)}
+        // The markdown container's `link` is a placeholder, never a real URL (see
+        // ensureMarkdownElement) — without this, clicking its hyperlink affordance
+        // would try to open "notegpt:markdown" as a real link and fail.
+        onLinkOpen={(element, event) => {
+          if (element.id === MARKDOWN_ELEMENT_ID) event.preventDefault();
+        }}
         initialData={{
-          elements: scene.elements as ExcalidrawElement[],
-          // Force transparent regardless of what's stored: the overlay sits on top of the
-          // markdown pane, so an opaque canvas background would hide the text underneath.
-          appState: { ...(scene.appState as Partial<AppState>), viewBackgroundColor: "transparent" },
+          elements: ensureMarkdownElement(scene.elements) as ExcalidrawElement[],
+          appState: scene.appState as Partial<AppState>,
           files: scene.files as BinaryFiles,
         }}
         onChange={viewMode ? undefined : debouncedOnChange}
