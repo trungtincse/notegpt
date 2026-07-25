@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { createEmptyAnnotationScene } from "../model/AnnotationScene.js";
+import { buildMarkdownElementId, createEmptyAnnotationScene } from "../model/AnnotationScene.js";
 import { NOTE_SCHEMA_VERSION, type Note } from "../model/Note.js";
 import type { StorageAdapter } from "../model/StorageAdapter.js";
 
@@ -63,6 +63,32 @@ export class NoteController {
     if (!this.state.note) return;
     const markdownBlocks = this.state.note.markdownBlocks.map((b) => (b.id === blockId ? { ...b, markdown } : b));
     const note: Note = { ...this.state.note, markdownBlocks, updatedAt: new Date().toISOString() };
+    this.setState({ note, saveStatus: "dirty" });
+    this.scheduleSave();
+  }
+
+  renameMarkdownBlock(blockId: string, title: string): void {
+    if (!this.state.note) return;
+    const markdownBlocks = this.state.note.markdownBlocks.map((b) => (b.id === blockId ? { ...b, title } : b));
+    const note: Note = { ...this.state.note, markdownBlocks, updatedAt: new Date().toISOString() };
+    this.setState({ note, saveStatus: "dirty" });
+    this.scheduleSave();
+  }
+
+  /** Explicit user-driven removal (e.g. a tab's close button in the Markdown view) — unlike
+   * `pruneMarkdownBlocks`, this is the source of the deletion, not a reaction to one, so it
+   * also drops the block's canvas embeddable itself instead of waiting for a scene diff. */
+  removeMarkdownBlock(blockId: string): void {
+    if (!this.state.note) return;
+    const markdownBlocks = this.state.note.markdownBlocks.filter((b) => b.id !== blockId);
+    const elementId = buildMarkdownElementId(blockId);
+    const elements = this.state.note.annotation.elements.filter((el) => (el as { id?: unknown }).id !== elementId);
+    const note: Note = {
+      ...this.state.note,
+      markdownBlocks,
+      annotation: { ...this.state.note.annotation, elements },
+      updatedAt: new Date().toISOString(),
+    };
     this.setState({ note, saveStatus: "dirty" });
     this.scheduleSave();
   }

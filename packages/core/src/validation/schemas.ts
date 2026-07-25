@@ -22,6 +22,9 @@ export const mdNoteFileV1Schema = z.object({ schemaVersion: z.literal(1), note: 
 const markdownBlockSchema = z.object({
   id: z.string().min(1),
   markdown: z.string(),
+  // Optional (not a v3 bump): already-persisted v2 files without a title still parse fine —
+  // zod only requires presence of non-optional fields.
+  title: z.string().optional(),
 });
 const noteSchemaV2 = z.object({
   id: z.string().min(1),

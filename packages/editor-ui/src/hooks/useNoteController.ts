@@ -22,6 +22,8 @@ export function useNoteController(storage: StorageAdapter) {
     save: () => controller.save(),
     addMarkdownBlock: () => controller.addMarkdownBlock(),
     updateMarkdownBlock: (blockId: string, markdown: string) => controller.updateMarkdownBlock(blockId, markdown),
+    renameMarkdownBlock: (blockId: string, title: string) => controller.renameMarkdownBlock(blockId, title),
+    removeMarkdownBlock: (blockId: string) => controller.removeMarkdownBlock(blockId),
     updateAnnotation: (annotation: AnnotationScene) => controller.updateAnnotation(annotation),
   };
 }

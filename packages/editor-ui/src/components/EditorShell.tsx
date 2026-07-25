@@ -1,6 +1,6 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { StorageAdapter } from "@notegpt/core";
-import { Code2, Eye, PenLine, Plus } from "lucide-react";
+import { Code2, Eye, PenLine, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAnnotationController } from "../hooks/useAnnotationController.js";
 import { useNoteController } from "../hooks/useNoteController.js";
@@ -26,15 +26,18 @@ type ShellMode = "markdown" | "annotation" | "view";
  * switcher moves between the three.
  */
 export function EditorShell({ storage, noteId }: EditorShellProps) {
-  const { note, saveStatus, load, addMarkdownBlock, updateMarkdownBlock, controller } = useNoteController(storage);
+  const { note, saveStatus, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
+    useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [mode, setMode] = useState<ShellMode>("markdown");
   // Which block's editor is showing in the Markdown tab. Falls back to the first block
-  // whenever this doesn't match a live block (initial mount, or the active block got
-  // deleted via canvas — see AnnotationController's prune) instead of needing a dedicated
-  // sync effect.
+  // whenever this doesn't match a live block (initial mount, the active block got removed
+  // via its tab's close button, or deleted via canvas — see AnnotationController's prune)
+  // instead of needing a dedicated sync effect.
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [renamingBlockId, setRenamingBlockId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   // `noteId` is the adapter's opaque address (e.g. a file path), distinct from
   // `note.id` (the note's own stable content identity) — track load completion
@@ -58,6 +61,21 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
   const handleAddBlock = () => {
     const id = addMarkdownBlock();
     setActiveBlockId(id);
+  };
+
+  const handleRemoveBlock = (blockId: string) => {
+    if (!window.confirm("Delete this note? This can't be undone.")) return;
+    removeMarkdownBlock(blockId);
+  };
+
+  const startRename = (block: (typeof note.markdownBlocks)[number], index: number) => {
+    setRenamingBlockId(block.id);
+    setRenameDraft(block.title ?? `Note ${index + 1}`);
+  };
+
+  const commitRename = () => {
+    if (renamingBlockId) renameMarkdownBlock(renamingBlockId, renameDraft.trim());
+    setRenamingBlockId(null);
   };
 
   return (
@@ -106,16 +124,43 @@ export function EditorShell({ storage, noteId }: EditorShellProps) {
             {note.markdownBlocks.length > 0 && (
               <div className="notegpt-markdown-tabs" role="tablist">
                 {note.markdownBlocks.map((block, index) => (
-                  <button
+                  <div
                     key={block.id}
-                    type="button"
                     role="tab"
+                    tabIndex={0}
                     aria-selected={block.id === activeBlock?.id}
                     className={`notegpt-markdown-tab${block.id === activeBlock?.id ? " active" : ""}`}
                     onClick={() => setActiveBlockId(block.id)}
+                    onDoubleClick={() => startRename(block, index)}
                   >
-                    Note {index + 1}
-                  </button>
+                    {renamingBlockId === block.id ? (
+                      <input
+                        autoFocus
+                        className="notegpt-markdown-tab-rename-input"
+                        value={renameDraft}
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        onBlur={commitRename}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") commitRename();
+                          if (event.key === "Escape") setRenamingBlockId(null);
+                        }}
+                      />
+                    ) : (
+                      <span className="notegpt-markdown-tab-label">{block.title || `Note ${index + 1}`}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="notegpt-markdown-tab-remove"
+                      aria-label="Delete note"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveBlock(block.id);
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
                 ))}
                 <button type="button" className="notegpt-markdown-tab-add" aria-label="Add note" onClick={handleAddBlock}>
                   <Plus size={14} />

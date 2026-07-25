@@ -6,6 +6,8 @@ export interface MarkdownBlock {
   /** nanoid — stable identity linking this block to its canvas embeddable (see AnnotationScene.ts). */
   id: string;
   markdown: string;
+  /** User-given tab label; falls back to a positional "Note N" in the UI when unset. */
+  title?: string;
 }
 
 export interface Note {
