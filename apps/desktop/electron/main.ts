@@ -1,16 +1,28 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { app, BrowserWindow, Menu } from "electron";
 import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
 import { screen } from "electron";
+import { startRendererServer } from "./rendererServer.js";
 
 // Chromium's zygote/GPU process sandbox fails to spawn on some Linux kernels even when
 // chrome-sandbox is present and correctly permissioned (observed: "GPU process launch
 // failed", app never gets past a blank window) — must be set before app.whenReady(), and
 // as a command-line switch, not webPreferences.sandbox (that only controls the renderer's
-// own sandboxing, not the zygote/GPU process spawn that's actually failing). Safe here since
-// this app never loads untrusted remote web content.
+// own sandboxing, not the zygote/GPU process spawn that's actually failing).
 app.commandLine.appendSwitch("no-sandbox");
+// `no-sandbox` alone doesn't cover a related, separate class of Linux GPU issue: a cross-
+// origin iframe (a YouTube embeddable, the one remaining live iframe in the app — TikTok's
+// own embeddable renders a static thumbnail image instead, see TiktokThumbnail) needs its own
+// out-of-process-iframe compositing handshake, distinct from the main renderer's. Observed in
+// packaged (but not dev) builds: the iframe itself loads (Excalidraw treats it as a valid
+// embed and draws its normal UI chrome around it) but never paints, showing as a flat gray
+// box — the classic symptom of a restricted/misconfigured `/dev/shm` breaking the GPU
+// process's shared-memory compositing buffers, which `disable-dev-shm-usage` (spill to /tmp
+// instead) and `disable-gpu-sandbox` (the GPU process's own separate sandbox, not covered by
+// the renderer/zygote-focused `no-sandbox` above) are the standard fix for.
+app.commandLine.appendSwitch("disable-gpu-sandbox");
+app.commandLine.appendSwitch("disable-dev-shm-usage");
 
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");
@@ -18,6 +30,9 @@ const rendererIndexPath = join(__dirname, "../renderer/index.html");
 const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 
 let mainWindow: BrowserWindow | null = null;
+// Set once, before any window is created, by the rendererServer.start() call in
+// app.whenReady() below — only used in production (see createWindow's isDev branch).
+let rendererServerBaseUrl: string | null = null;
 
 // Shared by the main window and any note-link-opened windows (see openNoteInNewWindow) — the
 // only difference between them is which note, if any, gets auto-selected on load, passed via
@@ -57,6 +72,12 @@ function createWindow(openNotePath?: string): BrowserWindow {
 
   if (isDev && rendererDevUrl) {
     const url = new URL(rendererDevUrl);
+    if (openNotePath) url.searchParams.set("openNote", openNotePath);
+    void win.loadURL(url.toString());
+  } else if (rendererServerBaseUrl) {
+    // See rendererServer.ts: a real http:// origin (not loadFile's file://) is required for
+    // the YouTube embeddable to actually play instead of showing "Error 153".
+    const url = new URL("index.html", rendererServerBaseUrl);
     if (openNotePath) url.searchParams.set("openNote", openNotePath);
     void win.loadURL(url.toString());
   } else {
@@ -100,7 +121,18 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (!isDev) {
+    try {
+      const server = await startRendererServer(dirname(rendererIndexPath));
+      rendererServerBaseUrl = server.baseUrl;
+    } catch (err) {
+      // Falls back to createWindow's loadFile branch — a broken YouTube embeddable is far
+      // better than the app failing to start at all.
+      console.log(`[rendererServer] failed to start, falling back to loadFile: ${err}`);
+    }
+  }
+
   registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();
