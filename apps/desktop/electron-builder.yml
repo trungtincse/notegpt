@@ -17,6 +17,9 @@ linux:
   maintainer: notegpt
   icon: build/icons
   artifactName: "${productName}-${version}-${arch}.${ext}"
+deb:
+  afterInstall: build/postinstall.sh
+  afterRemove: build/postremove.sh
 win:
   target:
     - nsis
