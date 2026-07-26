@@ -6,7 +6,6 @@ import {
   ensureMarkdownElements,
   extractTiktokVideoId,
   fetchTiktokOEmbed,
-  getTiktokEmbedSrc,
   isMarkdownElementId,
   parseMarkdownElementId,
   parseNoteLink,
@@ -118,25 +117,92 @@ function MarkdownEmbeddable({
   );
 }
 
-// Fallback size (TikTok's own long-documented default embed card dimensions — the player
-// chrome plus its like/comment/share icon column) for when the oEmbed lookup below fails
-// (offline, API hiccup) and there's no per-video size to go by.
-const TIKTOK_EMBED_FALLBACK_WIDTH = 325;
-const TIKTOK_EMBED_FALLBACK_HEIGHT = 739;
+/** Renders a TikTok embeddable as its oEmbed thumbnail image rather than a live iframe —
+ * TikTok's frame-ancestors policy blocks the plain watch-page URL, and unlike YouTube/Vimeo
+ * there's no static thumbnail CDN URL, so the thumbnail has to come from a network oEmbed
+ * call (see fetchTiktokOEmbed). Nothing is rendered until that call resolves, mirroring
+ * replaceTiktokEmbedsForPrint's same "leave it be on failure" behavior for a slow/offline
+ * network or an oEmbed miss.
+ *
+ * Once the image has loaded, its real natural aspect ratio corrects the *element's own*
+ * stored height (keeping its current width) via a direct updateScene — not just a DOM/CSS
+ * resize. Excalidraw draws the embeddable's selection/frame border on the canvas straight
+ * from the element's width/height fields, independent of whatever the DOM overlay looks
+ * like, so only correcting the element's real data fixes both the image display and that
+ * border at once. `captureUpdate: NEVER` (same as the eraser/paste corrections elsewhere in
+ * this file) because this is a housekeeping correction, not a user action worth its own undo
+ * step. */
+function TiktokThumbnail({
+  element,
+  apiRef,
+}: {
+  element: ExcalidrawElement;
+  apiRef: MutableRefObject<ExcalidrawImperativeAPI | null>;
+}) {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const videoUrl = typeof element.link === "string" ? element.link : "";
+  const elementId = element.id;
 
-/** Inserts a correctly-linked, correctly-sized TikTok embeddable at the current viewport's
- * center — bypassing Excalidraw's own paste handling, which has no TikTok-specific pattern and
- * would otherwise misparse the pasted embed code's first `<a href>` (the author's profile link)
- * as the link (see parseTiktokEmbedCode). Sized from TikTok's own oEmbed response rather than a
- * guess — its embed card isn't just the video: the like/comment/share icon column down the side
- * needs real width too, and a size guessed too small clips it or forces a scrollbar (see
- * fetchTiktokOEmbed's own comment). `restoreElements` (the same normalization Excalidraw itself
- * runs on `initialData`/library paste) fills in every field a hand-built partial element is
- * missing — `updateScene` on its own does not. */
+  useEffect(() => {
+    let cancelled = false;
+    setThumbnailUrl(null);
+    fetchTiktokOEmbed(videoUrl).then((oEmbed) => {
+      if (!cancelled && oEmbed) setThumbnailUrl(oEmbed.thumbnailUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoUrl]);
+
+  const handleLoad = useCallback(
+    (e: { currentTarget: HTMLImageElement }) => {
+      const { naturalWidth, naturalHeight } = e.currentTarget;
+      const api = apiRef.current;
+      if (!naturalWidth || !naturalHeight || !api) return;
+      const current = api.getSceneElements().find((el) => el.id === elementId);
+      if (!current) return;
+      const targetHeight = Math.round((current.width * naturalHeight) / naturalWidth);
+      if (Math.abs(current.height - targetHeight) < 1) return;
+      api.updateScene({
+        elements: api.getSceneElements().map((el) => (el.id === elementId ? { ...el, height: targetHeight } : el)),
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+    },
+    [apiRef, elementId]
+  );
+
+  if (!thumbnailUrl) return null;
+
+  return (
+    <img
+      src={thumbnailUrl}
+      onLoad={handleLoad}
+      alt="TikTok video thumbnail"
+      // "contain" (not "cover") covers the brief window before the load-time correction above
+      // has run (or if it can't run, e.g. api not ready yet) — the element's stored height may
+      // not match the image yet, and contain never crops, just letterboxes in that case.
+      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+    />
+  );
+}
+
+// Fallback size (TikTok's own long-documented default embed card dimensions — the player
+// chrome plus its like/comment/share icon column) for a freshly-inserted embeddable, before
+// TiktokThumbnail's own load-time height correction kicks in once the thumbnail has loaded.
+const TIKTOK_EMBED_FALLBACK_WIDTH = 340;
+const TIKTOK_EMBED_FALLBACK_HEIGHT = 605;
+
+/** Inserts a correctly-linked TikTok embeddable at the current viewport's center — bypassing
+ * Excalidraw's own paste handling, which has no TikTok-specific pattern and would otherwise
+ * misparse the pasted embed code's first `<a href>` (the author's profile link) as the link
+ * (see parseTiktokEmbedCode). Placed at a fixed default size; TiktokThumbnail's own container
+ * correction takes over as soon as the thumbnail loads, so no oEmbed round-trip is needed
+ * here just to get an initial size right. `restoreElements` (the same normalization Excalidraw
+ * itself runs on `initialData`/library paste) fills in every field a hand-built partial element
+ * is missing — `updateScene` on its own does not. */
 async function insertTiktokEmbeddable(api: ExcalidrawImperativeAPI, videoUrl: string): Promise<void> {
-  const oEmbed = await fetchTiktokOEmbed(videoUrl);
-  const width = oEmbed?.width ?? TIKTOK_EMBED_FALLBACK_WIDTH;
-  const height = oEmbed?.height ?? TIKTOK_EMBED_FALLBACK_HEIGHT;
+  const width = TIKTOK_EMBED_FALLBACK_WIDTH;
+  const height = TIKTOK_EMBED_FALLBACK_HEIGHT;
 
   const appState = api.getAppState();
   const zoom = appState.zoom.value;
@@ -409,19 +475,11 @@ export function AnnotationOverlay({
           }
           // Excalidraw has no built-in notion of TikTok (unlike YouTube/Vimeo/etc — see
           // getEmbedLink) and would otherwise try to iframe the plain watch-page URL directly,
-          // which TikTok's frame-ancestors policy blocks — this points the iframe at TikTok's
-          // own embeddable endpoint instead.
+          // which TikTok's frame-ancestors policy blocks — rendered as its oEmbed thumbnail
+          // image instead (see TiktokThumbnail).
           const tiktokVideoId = typeof element.link === "string" ? extractTiktokVideoId(element.link) : null;
           if (tiktokVideoId !== null) {
-            return (
-              <iframe
-                key={element.id}
-                src={getTiktokEmbedSrc(tiktokVideoId)}
-                title="TikTok video"
-                allow="encrypted-media; fullscreen"
-                style={{ width: "100%", height: "100%", border: "none" }}
-              />
-            );
+            return <TiktokThumbnail key={element.id} element={element} apiRef={apiRef} />;
           }
           return null;
         }}
