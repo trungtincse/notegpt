@@ -1,14 +1,15 @@
-// Root package.json's "version" is the one place to bump — this copies it into every other
-// workspace package.json (all private, workspace-internal packages; none of them are
-// published separately, so there's no reason their version fields should ever be edited by
-// hand instead of just kept in sync with the root).
+// Root package.json's "version" is the one place to bump. packages/core and
+// packages/editor-ui dropped their own "version" field entirely (private, workspace-only,
+// nothing ever read it). apps/desktop still needs a real one — electron-builder stamps
+// built artifacts with it, and Electron's own app.getVersion() reads it at runtime — so
+// that's the only file this actually has to write.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const PACKAGE_PATHS = ["package.json", "packages/core/package.json", "packages/editor-ui/package.json", "apps/desktop/package.json"];
+const PACKAGE_PATHS = ["apps/desktop/package.json"];
 
 const { version } = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf-8"));
 
