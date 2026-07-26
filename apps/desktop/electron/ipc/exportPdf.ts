@@ -11,6 +11,7 @@ import {
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { PDFDocument, PDFName, PDFString } from "pdf-lib";
+import { recompressLargeRasterImages } from "./recompressPdfImages.js";
 
 // Comfortably above AnnotationOverlay's own internal 3000ms readiness fallback (see its
 // comments) plus margin for a couple of extra animation frames — this is the last-resort
@@ -245,11 +246,16 @@ export function registerExportHandlers(getWindow: () => BrowserWindow | null, op
         // renderer never reported (timed out).
         const pageHeightIn = (contentHeight ?? mainHeight) / CSS_PX_PER_INCH + marginTopIn + marginBottomIn;
 
-        const pdfBuffer = await printWin.webContents.printToPDF({
+        const rawPdfBuffer = await printWin.webContents.printToPDF({
           printBackground: true,
           pageSize: { width: printWidth / CSS_PX_PER_INCH, height: pageHeightIn },
           margins: { top: marginTopIn, bottom: marginBottomIn, left: 0, right: 0 },
         });
+        // Chromium rasterizes the whole page (including every pasted photo) as one lossless
+        // bitmap regardless of source format — see recompressLargeRasterImages's own comment
+        // for why this, not anything upstream of printToPDF, is the only lever that actually
+        // shrinks a photo-heavy export.
+        const pdfBuffer = await recompressLargeRasterImages(rawPdfBuffer);
 
         // titleBlockHeightPx can only be derived once the real rendered height is known (the
         // title's own height isn't part of scene bounds — see PrintView.tsx) — skip adding

@@ -36,11 +36,11 @@ describe("getYoutubeThumbnailUrl / getYoutubeWatchUrl", () => {
 });
 
 describe("replaceYoutubeEmbedsForPrint", () => {
-  it("swaps a YouTube embeddable for an image element pointing at the thumbnail, linked to the watch page", () => {
+  it("swaps a YouTube embeddable for an image element pointing at the thumbnail, linked to the watch page, plus a centered logo overlay element", () => {
     const elements = [{ id: "e1", type: "embeddable", x: 0, y: 0, width: 560, height: 315, link: "https://www.youtube.com/embed/abc123?enablejsapi=1" }];
     const { elements: result, files } = replaceYoutubeEmbedsForPrint(elements, {});
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     const el = result[0] as Record<string, unknown>;
     expect(el.type).toBe("image");
     expect(el.link).toBe("https://www.youtube.com/watch?v=abc123");
@@ -49,6 +49,16 @@ describe("replaceYoutubeEmbedsForPrint", () => {
     const fileId = el.fileId as string;
     expect(fileId).toBeTruthy();
     expect((files[fileId] as Record<string, unknown>).dataURL).toBe("https://i.ytimg.com/vi/abc123/maxresdefault.jpg");
+
+    const logoEl = result[1] as Record<string, unknown>;
+    expect(logoEl.type).toBe("image");
+    expect(logoEl.width).toBeLessThan(560);
+    expect(logoEl.height).toBeLessThan(315);
+    // Centered over the thumbnail's box.
+    expect((logoEl.x as number) + (logoEl.width as number) / 2).toBeCloseTo(0 + 560 / 2);
+    expect((logoEl.y as number) + (logoEl.height as number) / 2).toBeCloseTo(0 + 315 / 2);
+    const logoFileId = logoEl.fileId as string;
+    expect((files[logoFileId] as Record<string, unknown>).mimeType).toBe("image/svg+xml");
   });
 
   it("leaves non-YouTube embeddables and other element types untouched", () => {

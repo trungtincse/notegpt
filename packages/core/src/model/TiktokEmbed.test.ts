@@ -114,11 +114,17 @@ describe("replaceTiktokEmbedsForPrint", () => {
       expect.stringContaining("https://www.tiktok.com/oembed?url="),
       expect.anything()
     );
+    expect(result).toHaveLength(2);
     const el = result[0] as Record<string, unknown>;
     expect(el.type).toBe("image");
     expect(el.link).toBe("https://www.tiktok.com/@user/video/123");
     const fileId = el.fileId as string;
     expect((files[fileId] as Record<string, unknown>).dataURL).toBe("https://p16-sign.tiktokcdn.com/thumb.jpg");
+
+    const logoEl = result[1] as Record<string, unknown>;
+    expect(logoEl.type).toBe("image");
+    const logoFileId = logoEl.fileId as string;
+    expect((files[logoFileId] as Record<string, unknown>).mimeType).toBe("image/svg+xml");
   });
 
   it("leaves the element unchanged when the oEmbed fetch fails", async () => {

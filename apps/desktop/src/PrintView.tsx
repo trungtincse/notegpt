@@ -9,6 +9,7 @@ import {
 import { AnnotationOverlay } from "@notegpt/editor-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
+import { shrinkImagesForPrint } from "./shrinkImagesForPrint.js";
 
 // Padding (px) around the scene's content bounds so nothing sits flush against the page edge.
 // Larger than it looks like it should need to be: hand-drawn (rough.js) strokes visually
@@ -45,7 +46,14 @@ export function PrintView({ folderPath, filePath }: { folderPath: string; filePa
       // done well before exportPdf.ts's own outer PRINT_READY_TIMEOUT_MS runs out.
       const rawElements = ensureMarkdownElements(loaded.annotation.elements, loaded.markdownBlocks.map((b) => b.id));
       const withYoutube = replaceYoutubeEmbedsForPrint(rawElements, loaded.annotation.files);
-      const { elements, files } = await replaceTiktokEmbedsForPrint(withYoutube.elements, withYoutube.files);
+      const { elements, files: filesBeforeShrink } = await replaceTiktokEmbedsForPrint(
+        withYoutube.elements,
+        withYoutube.files
+      );
+      // Chromium's printToPDF rasterizes every image losslessly regardless of source format
+      // (see shrinkImagesForPrint's own comment) — this keeps the export from embedding way
+      // more pixels than a pasted photo or video thumbnail ever actually shows on canvas.
+      const files = await shrinkImagesForPrint(elements, filesBeforeShrink);
 
       if (!cancelled) {
         setNote({ ...loaded, annotation: { ...loaded.annotation, elements, files } });
