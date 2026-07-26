@@ -7,6 +7,7 @@ const mdnoteApi = {
   writeNote: (filePath, note) => ipcRenderer.invoke("mdnote:writeNote", filePath, note),
   createNote: (folderPath, title) => ipcRenderer.invoke("mdnote:createNote", folderPath, title),
   deleteNote: (filePath) => ipcRenderer.invoke("mdnote:deleteNote", filePath),
+  renameNoteFile: (filePath, title) => ipcRenderer.invoke("mdnote:renameNoteFile", filePath, title),
   getRecentFiles: () => ipcRenderer.invoke("mdnote:getRecentFiles"),
   addRecentFile: (filePath) => ipcRenderer.invoke("mdnote:addRecentFile", filePath),
   getPinnedFiles: () => ipcRenderer.invoke("mdnote:getPinnedFiles"),
@@ -15,6 +16,7 @@ const mdnoteApi = {
   getHasSeenWelcome: () => ipcRenderer.invoke("mdnote:getHasSeenWelcome"),
   markWelcomeSeen: () => ipcRenderer.invoke("mdnote:markWelcomeSeen"),
   ensureWelcomeNoteFile: () => ipcRenderer.invoke("mdnote:ensureWelcomeNoteFile"),
+  openNoteInNewWindow: (filePath) => ipcRenderer.invoke("mdnote:openNoteInNewWindow", filePath),
   exportNotePdf: (folderPath, filePath, title) => ipcRenderer.invoke("mdnote:exportNotePdf", folderPath, filePath, title),
   notifyPrintReady: (contentHeight) => ipcRenderer.send("mdnote:print-ready", contentHeight),
   onMenuOpenFolder: (callback) => {
@@ -26,6 +28,11 @@ const mdnoteApi = {
     const listener = () => callback();
     ipcRenderer.on("mdnote:menu-new-note", listener);
     return () => ipcRenderer.removeListener("mdnote:menu-new-note", listener);
+  },
+  onMenuShowGuideline: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("mdnote:menu-show-guideline", listener);
+    return () => ipcRenderer.removeListener("mdnote:menu-show-guideline", listener);
   }
 };
 contextBridge.exposeInMainWorld("mdnote", mdnoteApi);
