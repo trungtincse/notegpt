@@ -23,6 +23,22 @@ app.commandLine.appendSwitch("no-sandbox");
 // the renderer/zygote-focused `no-sandbox` above) are the standard fix for.
 app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("disable-dev-shm-usage");
+// Confirmed via kernel audit log (`journalctl -k`) on a real Ubuntu 24.04 machine: even with
+// `no-sandbox` above, Chromium still calls unshare() to create a Linux user namespace for
+// unrelated internal reasons. AppArmor allows that creation but then transitions the process
+// into a more restricted `unprivileged_userns` profile — audit showed
+// `operation="userns_create" ... transitioning profile` immediately followed by
+// `apparmor="DENIED" operation="capable" ... capability=21 capname="sys_admin"` inside that
+// profile, then a hard `trap int3` crash in that process. That denial/crash is what was
+// corrupting GPU shared-memory setup downstream (surfacing as a bizarre "/tmp: No such
+// process" error) and leaving the YouTube embeddable's out-of-process iframe blank.
+// `disable-namespace-sandbox` alone did NOT stop this (verified: identical audit sequence
+// with it set) — this Electron/Chromium build's zygote calls unshare() unconditionally as
+// part of its own process-launcher architecture, not gated by that flag. `no-zygote` skips
+// the zygote fork-server entirely (renderer/GPU processes are forked directly instead),
+// which is the only thing that actually avoids this call path.
+app.commandLine.appendSwitch("disable-namespace-sandbox");
+app.commandLine.appendSwitch("no-zygote");
 
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");

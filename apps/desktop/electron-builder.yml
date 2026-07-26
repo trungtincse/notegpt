@@ -4,6 +4,7 @@ executableName: NoteGPT
 directories:
   output: dist
   buildResources: build
+afterPack: build/afterPack.cjs
 files:
   - out/**/*
   - resources/**/*
@@ -16,8 +17,6 @@ linux:
   maintainer: notegpt
   icon: build/icons
   artifactName: "${productName}-${version}-${arch}.${ext}"
-deb:
-  afterInstall: build/postinstall.sh
 win:
   target:
     - nsis
