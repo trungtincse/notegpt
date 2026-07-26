@@ -1,3 +1,5 @@
+import { buildLogoOverlayElement, TIKTOK_LOGO_SVG } from "./PlatformLogoOverlay.js";
+
 /**
  * Parses the video id + canonical watch URL out of TikTok's own "Embed video" HTML snippet —
  * a `<blockquote class="tiktok-embed" cite="..." data-video-id="...">` plus a trailing
@@ -36,6 +38,10 @@ interface EmbeddableElementLike {
   type?: unknown;
   link?: unknown;
   isDeleted?: unknown;
+  x?: unknown;
+  y?: unknown;
+  width?: unknown;
+  height?: unknown;
 }
 
 const OEMBED_FETCH_TIMEOUT_MS = 4000;
@@ -97,20 +103,39 @@ export async function replaceTiktokEmbedsForPrint(
   files: Record<string, unknown>
 ): Promise<{ elements: unknown[]; files: Record<string, unknown> }> {
   const nextFiles = { ...files };
-  const nextElements = await Promise.all(
+  const nextElementsNested = await Promise.all(
     elements.map(async (element) => {
       const el = element as EmbeddableElementLike;
-      if (el.isDeleted || el.type !== "embeddable" || typeof el.link !== "string") return element;
+      if (el.isDeleted || el.type !== "embeddable" || typeof el.link !== "string") return [element];
       const videoId = extractTiktokVideoId(el.link);
-      if (!videoId) return element;
+      if (!videoId) return [element];
 
       const oEmbed = await fetchTiktokOEmbed(el.link);
-      if (!oEmbed) return element;
+      if (!oEmbed) return [element];
 
       const fileId = `notegpt-tiktok-thumb:${videoId}`;
       nextFiles[fileId] = { id: fileId, mimeType: "image/jpeg", dataURL: oEmbed.thumbnailUrl, created: 0 };
-      return { ...(element as Record<string, unknown>), type: "image", fileId };
+      const thumbElement = { ...(element as Record<string, unknown>), type: "image", fileId };
+
+      // Stamps the TikTok logo, centered, over the thumbnail — makes clear on a static
+      // print/PDF page which image was originally a video (see buildLogoOverlayElement).
+      if (
+        typeof el.x === "number" &&
+        typeof el.y === "number" &&
+        typeof el.width === "number" &&
+        typeof el.height === "number"
+      ) {
+        const logoFileId = `notegpt-tiktok-logo:${videoId}`;
+        const { element: logoElement, file: logoFile } = buildLogoOverlayElement(
+          { x: el.x, y: el.y, width: el.width, height: el.height },
+          TIKTOK_LOGO_SVG,
+          logoFileId
+        );
+        nextFiles[logoFileId] = logoFile;
+        return [thumbElement, logoElement];
+      }
+      return [thumbElement];
     })
   );
-  return { elements: nextElements, files: nextFiles };
+  return { elements: nextElementsNested.flat(), files: nextFiles };
 }

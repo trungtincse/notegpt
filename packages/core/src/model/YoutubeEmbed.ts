@@ -1,3 +1,5 @@
+import { buildLogoOverlayElement, YOUTUBE_LOGO_SVG } from "./PlatformLogoOverlay.js";
+
 /** Extracts the video id from any YouTube URL shape Excalidraw's paste handler can produce
  * for a canvas embeddable — a plain watch/share link, a youtu.be short link, or the
  * `/embed/<id>` src pulled out of a pasted `<iframe>` embed snippet — or null if `link` isn't
@@ -41,6 +43,10 @@ interface EmbeddableElementLike {
   type?: unknown;
   link?: unknown;
   isDeleted?: unknown;
+  x?: unknown;
+  y?: unknown;
+  width?: unknown;
+  height?: unknown;
 }
 
 /**
@@ -57,11 +63,11 @@ export function replaceYoutubeEmbedsForPrint(
   files: Record<string, unknown>
 ): { elements: unknown[]; files: Record<string, unknown> } {
   const nextFiles = { ...files };
-  const nextElements = elements.map((element) => {
+  const nextElements = elements.flatMap((element) => {
     const el = element as EmbeddableElementLike;
-    if (el.isDeleted || el.type !== "embeddable" || typeof el.link !== "string") return element;
+    if (el.isDeleted || el.type !== "embeddable" || typeof el.link !== "string") return [element];
     const videoId = extractYoutubeVideoId(el.link);
-    if (!videoId) return element;
+    if (!videoId) return [element];
 
     const fileId = `notegpt-youtube-thumb:${videoId}`;
     nextFiles[fileId] = {
@@ -70,7 +76,21 @@ export function replaceYoutubeEmbedsForPrint(
       dataURL: getYoutubeThumbnailUrl(videoId),
       created: 0,
     };
-    return { ...(element as Record<string, unknown>), type: "image", fileId, link: getYoutubeWatchUrl(videoId) };
+    const thumbElement = { ...(element as Record<string, unknown>), type: "image", fileId, link: getYoutubeWatchUrl(videoId) };
+
+    // Stamps the YouTube logo, centered, over the thumbnail — makes clear on a static
+    // print/PDF page which image was originally a video (see buildLogoOverlayElement).
+    if (typeof el.x === "number" && typeof el.y === "number" && typeof el.width === "number" && typeof el.height === "number") {
+      const logoFileId = `notegpt-youtube-logo:${videoId}`;
+      const { element: logoElement, file: logoFile } = buildLogoOverlayElement(
+        { x: el.x, y: el.y, width: el.width, height: el.height },
+        YOUTUBE_LOGO_SVG,
+        logoFileId
+      );
+      nextFiles[logoFileId] = logoFile;
+      return [thumbElement, logoElement];
+    }
+    return [thumbElement];
   });
   return { elements: nextElements, files: nextFiles };
 }
