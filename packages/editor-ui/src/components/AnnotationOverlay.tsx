@@ -10,6 +10,7 @@ import {
   parseMarkdownElementId,
   parseNoteLink,
   parseTiktokEmbedCode,
+  reconcileMarkdownSearchElements,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   type AnnotationScene,
   type MarkdownBlock,
@@ -236,6 +237,8 @@ export function AnnotationOverlay({
   onReadyRef.current = onReady;
 
   const markdownById = useMemo(() => new Map(markdownBlocks.map((b) => [b.id, b.markdown])), [markdownBlocks]);
+  const markdownBlocksRef = useRef(markdownBlocks);
+  markdownBlocksRef.current = markdownBlocks;
 
   // A note that's already had a camera position saved (from a previous pan/zoom) keeps it
   // across opens instead of being auto-positioned again — see the centerOnMount prop doc.
@@ -297,6 +300,19 @@ export function AnnotationOverlay({
         if (revivedAny) {
           api.updateScene({ elements: corrected, captureUpdate: CaptureUpdateAction.NEVER });
           debouncedOnChange(corrected, appState, files);
+          return;
+        }
+      }
+
+      // Keeps each markdown block's hidden search-text element (see reconcileMarkdownSearchElements)
+      // positioned wherever its sticky note actually is — most importantly right after a drag/resize,
+      // which is a plain Excalidraw element move this component otherwise has no other hook into.
+      if (api) {
+        const reconciled = reconcileMarkdownSearchElements(elements, markdownBlocksRef.current);
+        if (reconciled !== elements) {
+          const restored = restoreElements(reconciled as ExcalidrawElement[], null);
+          api.updateScene({ elements: restored, captureUpdate: CaptureUpdateAction.NEVER });
+          debouncedOnChange(restored, appState, files);
           return;
         }
       }
@@ -448,6 +464,21 @@ export function AnnotationOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Markdown content is edited from a separate tab, not through Excalidraw's own onChange —
+  // this is the hook that keeps each block's hidden search-text element (see
+  // reconcileMarkdownSearchElements) re-worded whenever that happens, viewMode included (a
+  // read-only note can still be searched).
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const current = api.getSceneElements();
+    const reconciled = reconcileMarkdownSearchElements(current, markdownBlocks);
+    if (reconciled !== current) {
+      const restored = restoreElements(reconciled as ExcalidrawElement[], null);
+      api.updateScene({ elements: restored, captureUpdate: CaptureUpdateAction.NEVER });
+    }
+  }, [apiRef, markdownBlocks]);
+
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
@@ -514,7 +545,10 @@ export function AnnotationOverlay({
           return true;
         }}
         initialData={{
-          elements: ensureMarkdownElements(scene.elements, markdownBlocks.map((b) => b.id)) as ExcalidrawElement[],
+          elements: reconcileMarkdownSearchElements(
+            ensureMarkdownElements(scene.elements, markdownBlocks.map((b) => b.id)),
+            markdownBlocks
+          ) as ExcalidrawElement[],
           // Falls back to the toolbar's default swatch/min stroke width when the scene has
           // never set them (brand-new note); an already-persisted value (the user changed it
           // before) always wins.

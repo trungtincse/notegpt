@@ -1,12 +1,115 @@
-import { join, extname, dirname } from "node:path";
+import { join, extname, dirname, normalize, sep } from "node:path";
 import { ipcMain, dialog, BrowserWindow, app, Menu, screen } from "electron";
 import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, extractYoutubeVideoId, getYoutubeWatchUrl, parseNoteLink, concatMarkdownBlocks, serializeMdNote, createBlankNote } from "@notegpt/core";
 import { promises } from "node:fs";
-import { PDFDocument, PDFString, PDFName } from "pdf-lib";
+import { PDFDocument, PDFRawStream, PDFName, PDFNumber, PDFArray, PDFDict, PDFString } from "pdf-lib";
+import { encode } from "jpeg-js";
+import { inflateSync } from "node:zlib";
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 const require2 = __cjs_mod__.createRequire(import.meta.url);
+const MIN_RECOMPRESS_BYTES = 2e4;
+const JPEG_QUALITY = 80;
+function nameAt(dict, key) {
+  try {
+    return dict.lookupMaybe(PDFName.of(key), PDFName)?.asString();
+  } catch {
+    return void 0;
+  }
+}
+function numberAt(dict, key) {
+  try {
+    return dict.lookupMaybe(PDFName.of(key), PDFNumber)?.asNumber();
+  } catch {
+    return void 0;
+  }
+}
+function dictAt(dict, key) {
+  try {
+    return dict.lookupMaybe(PDFName.of(key), PDFDict);
+  } catch {
+    return void 0;
+  }
+}
+function colorSpaceChannels(dict, key) {
+  const name = nameAt(dict, key);
+  if (name === "/DeviceRGB") return 3;
+  if (name === "/DeviceGray") return 1;
+  let arr;
+  try {
+    arr = dict.lookupMaybe(PDFName.of(key), PDFArray);
+  } catch {
+    return null;
+  }
+  if (!arr || arr.size() < 2) return null;
+  let csName;
+  try {
+    csName = arr.lookupMaybe(0, PDFName)?.asString();
+  } catch {
+    return null;
+  }
+  if (csName !== "/ICCBased") return null;
+  let iccStream;
+  try {
+    iccStream = arr.lookupMaybe(1, PDFRawStream);
+  } catch {
+    return null;
+  }
+  if (!iccStream) return null;
+  const n = numberAt(iccStream.dict, "N");
+  return n === 1 || n === 3 ? n : null;
+}
+async function recompressLargeRasterImages(pdfBytes) {
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  for (const [, obj] of pdfDoc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    const { dict } = obj;
+    if (nameAt(dict, "Subtype") !== "/Image") continue;
+    if (nameAt(dict, "Filter") !== "/FlateDecode") continue;
+    if (obj.getContentsSize() < MIN_RECOMPRESS_BYTES) continue;
+    const width = numberAt(dict, "Width");
+    const height = numberAt(dict, "Height");
+    const bitsPerComponent = numberAt(dict, "BitsPerComponent");
+    if (!width || !height || bitsPerComponent !== 8) continue;
+    const channels = colorSpaceChannels(dict, "ColorSpace");
+    if (channels === null) continue;
+    const decodeParms = dictAt(dict, "DecodeParms");
+    const predictor = decodeParms ? numberAt(decodeParms, "Predictor") : void 0;
+    if (predictor && predictor > 1) continue;
+    let raw;
+    try {
+      raw = inflateSync(Buffer.from(obj.getContents()));
+    } catch {
+      continue;
+    }
+    if (raw.length < width * height * channels) continue;
+    const rgba = Buffer.alloc(width * height * 4);
+    for (let i = 0, p = 0; i < width * height; i++, p += channels) {
+      const r = raw[p];
+      const g = channels === 3 ? raw[p + 1] : r;
+      const b = channels === 3 ? raw[p + 2] : r;
+      const o = i * 4;
+      rgba[o] = r;
+      rgba[o + 1] = g;
+      rgba[o + 2] = b;
+      rgba[o + 3] = 255;
+    }
+    let jpegBytes;
+    try {
+      jpegBytes = encode({ data: rgba, width, height }, JPEG_QUALITY).data;
+    } catch {
+      continue;
+    }
+    if (jpegBytes.length >= obj.getContentsSize()) continue;
+    dict.set(PDFName.of("Filter"), PDFName.of("DCTDecode"));
+    dict.delete(PDFName.of("DecodeParms"));
+    obj.contents = jpegBytes;
+  }
+  return pdfDoc.save();
+}
 const PRINT_READY_TIMEOUT_MS = 8e3;
 const FALLBACK_WINDOW_HEIGHT = 800;
 const CONTENT_PADDING = 150;
@@ -150,11 +253,12 @@ function registerExportHandlers(getWindow, options) {
         const marginTopIn = 0.4;
         const marginBottomIn = 0.4;
         const pageHeightIn = (contentHeight ?? mainHeight) / CSS_PX_PER_INCH + marginTopIn + marginBottomIn;
-        const pdfBuffer = await printWin.webContents.printToPDF({
+        const rawPdfBuffer = await printWin.webContents.printToPDF({
           printBackground: true,
           pageSize: { width: printWidth / CSS_PX_PER_INCH, height: pageHeightIn },
           margins: { top: marginTopIn, bottom: marginBottomIn, left: 0, right: 0 }
         });
+        const pdfBuffer = await recompressLargeRasterImages(rawPdfBuffer);
         let finalBuffer = pdfBuffer;
         if (contentHeight !== null) {
           const titleBlockHeightPx = Math.max(0, contentHeight - printDimensions.height);
@@ -401,12 +505,69 @@ function registerFileHandlers(getWindow, openNoteInNewWindow) {
     return filePath;
   });
 }
+const MIME_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".map": "application/json; charset=utf-8"
+};
+function startRendererServer(rendererDir) {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      void (async () => {
+        try {
+          const requestPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
+          const relativePath = requestPath === "/" ? "index.html" : requestPath.replace(/^\/+/, "");
+          const filePath = normalize(join(rendererDir, relativePath));
+          if (!filePath.startsWith(normalize(rendererDir) + sep) && filePath !== normalize(rendererDir)) {
+            res.writeHead(403).end("Forbidden");
+            return;
+          }
+          const contents = await readFile(filePath);
+          const mimeType = MIME_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+          res.writeHead(200, { "Content-Type": mimeType });
+          res.end(contents);
+        } catch {
+          res.writeHead(404).end("Not found");
+        }
+      })();
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Renderer server failed to bind to a port"));
+        return;
+      }
+      resolve({
+        baseUrl: `http://127.0.0.1:${address.port}/`,
+        close: () => server.close()
+      });
+    });
+  });
+}
 app.commandLine.appendSwitch("no-sandbox");
+app.commandLine.appendSwitch("disable-gpu-sandbox");
+app.commandLine.appendSwitch("disable-dev-shm-usage");
+app.commandLine.appendSwitch("disable-namespace-sandbox");
+app.commandLine.appendSwitch("no-zygote");
 const isDev = !app.isPackaged;
 const preloadPath = join(__dirname, "../preload/preload.mjs");
 const rendererIndexPath = join(__dirname, "../renderer/index.html");
 const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 let mainWindow = null;
+let rendererServerBaseUrl = null;
 function createWindow(openNotePath) {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
@@ -439,6 +600,10 @@ function createWindow(openNotePath) {
   });
   if (isDev && rendererDevUrl) {
     const url = new URL(rendererDevUrl);
+    if (openNotePath) url.searchParams.set("openNote", openNotePath);
+    void win.loadURL(url.toString());
+  } else if (rendererServerBaseUrl) {
+    const url = new URL("index.html", rendererServerBaseUrl);
     if (openNotePath) url.searchParams.set("openNote", openNotePath);
     void win.loadURL(url.toString());
   } else {
@@ -477,7 +642,15 @@ function buildMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (!isDev) {
+    try {
+      const server = await startRendererServer(dirname(rendererIndexPath));
+      rendererServerBaseUrl = server.baseUrl;
+    } catch (err) {
+      console.log(`[rendererServer] failed to start, falling back to loadFile: ${err}`);
+    }
+  }
   registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();

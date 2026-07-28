@@ -1,3 +1,5 @@
+import { markdownToSearchableText } from "./markdownSearchText.js";
+
 /** Mirrors Excalidraw's elements/appState/files shape without depending on the excalidraw package. */
 export interface AnnotationScene {
   elements: unknown[];
@@ -92,6 +94,132 @@ export function ensureMarkdownElements(elements: unknown[], blockIds: string[]):
     backgroundColor: "transparent",
   }));
   return [...elements, ...newElements];
+}
+
+const MARKDOWN_SEARCH_ELEMENT_ID_PREFIX = "notegpt-markdown-search:";
+
+/** Font size for the hidden search-text elements — arbitrary, since they're never shown;
+ * only affects how Excalidraw's own search measures line offsets internally. */
+const MARKDOWN_SEARCH_FONT_SIZE = 16;
+const MARKDOWN_SEARCH_DEFAULT_HEIGHT = 20;
+
+/** Builds the scene-element id for a given markdown block's hidden search-index text. */
+export function buildMarkdownSearchElementId(blockId: string): string {
+  return `${MARKDOWN_SEARCH_ELEMENT_ID_PREFIX}${blockId}`;
+}
+
+export function isMarkdownSearchElementId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith(MARKDOWN_SEARCH_ELEMENT_ID_PREFIX);
+}
+
+/** Inverse of buildMarkdownSearchElementId — null if `id` isn't a search-text element's id. */
+export function parseMarkdownSearchElementId(id: string): string | null {
+  return isMarkdownSearchElementId(id) ? id.slice(MARKDOWN_SEARCH_ELEMENT_ID_PREFIX.length) : null;
+}
+
+interface MarkdownBlockLike {
+  id: string;
+  markdown: string;
+}
+
+interface SearchSyncElementLike {
+  id?: unknown;
+  type?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  text?: string;
+  isDeleted?: boolean;
+}
+
+/**
+ * Keeps one hidden, locked, invisible `text` element in sync per markdown block, positioned
+ * at that block's embeddable's (x, y) and holding a plain-text rendering of its markdown —
+ * necessary because Excalidraw's own Ctrl+F search (SearchMenu/handleSearch) only ever scans
+ * elements of type "text", with no extension point for other content, and has no visibility
+ * at all into what a custom `renderEmbeddable` draws (our markdown sticky notes are plain DOM,
+ * not Excalidraw elements). This lets the *built-in* search find/jump-to/highlight markdown
+ * content for free instead of a bespoke search UI.
+ *
+ * Deliberately does NOT track the embeddable's width/height — only (x, y) — since the hidden
+ * element is never seen and its own wrapped line layout (see markdownToSearchableText) is
+ * fixed-width by design; only its start position needs to track the visible sticky note so a
+ * found match's scroll-to-content lands near it. Returns `elements` unchanged (same reference)
+ * when nothing needs updating, so callers can skip touching the scene entirely in that case —
+ * see AnnotationOverlay's handleExcalidrawChange, which calls this on every change and must
+ * not treat a routine annotation edit that concerns none of the markdown blocks as one that
+ * requires a scene update to be applied via Excalidraw's own `updateScene`.
+ */
+export function reconcileMarkdownSearchElements(
+  elements: readonly unknown[],
+  markdownBlocks: MarkdownBlockLike[]
+): readonly unknown[] {
+  const els = elements as SearchSyncElementLike[];
+  const embeddableByBlockId = new Map<string, SearchSyncElementLike>();
+  const searchByBlockId = new Map<string, SearchSyncElementLike>();
+  for (const el of els) {
+    if (el.isDeleted || typeof el.id !== "string") continue;
+    const embedBlockId = parseMarkdownElementId(el.id);
+    if (embedBlockId !== null) embeddableByBlockId.set(embedBlockId, el);
+    const searchBlockId = parseMarkdownSearchElementId(el.id);
+    if (searchBlockId !== null) searchByBlockId.set(searchBlockId, el);
+  }
+
+  let changed = false;
+  const updated = els.map((el) => {
+    if (typeof el.id !== "string") return el;
+    const blockId = parseMarkdownSearchElementId(el.id);
+    if (blockId === null) return el;
+
+    const block = markdownBlocks.find((b) => b.id === blockId);
+    const embeddable = embeddableByBlockId.get(blockId);
+    // The block was removed (or its embeddable was) — tombstone the orphaned search text the
+    // same way an embeddable's own deletion is represented, rather than filtering it out.
+    if (!block || !embeddable) {
+      if (el.isDeleted) return el;
+      changed = true;
+      return { ...el, isDeleted: true };
+    }
+
+    const searchableText = markdownToSearchableText(block.markdown);
+    const needsReposition = el.x !== embeddable.x || el.y !== embeddable.y;
+    const needsRetext = el.text !== searchableText;
+    if (!needsReposition && !needsRetext) return el;
+
+    changed = true;
+    return {
+      ...el,
+      x: embeddable.x,
+      y: embeddable.y,
+      ...(needsRetext ? { text: searchableText, originalText: searchableText } : {}),
+    };
+  });
+
+  const missing = markdownBlocks.filter((b) => !searchByBlockId.has(b.id) && embeddableByBlockId.has(b.id));
+  if (missing.length === 0) return changed ? updated : elements;
+
+  changed = true;
+  const created = missing.map((block) => {
+    const embeddable = embeddableByBlockId.get(block.id)!;
+    const searchableText = markdownToSearchableText(block.markdown);
+    return {
+      id: buildMarkdownSearchElementId(block.id),
+      type: "text",
+      x: embeddable.x,
+      y: embeddable.y,
+      width: embeddable.width ?? MARKDOWN_TEXT_COLUMN_WIDTH,
+      height: MARKDOWN_SEARCH_DEFAULT_HEIGHT,
+      text: searchableText,
+      originalText: searchableText,
+      fontSize: MARKDOWN_SEARCH_FONT_SIZE,
+      // Invisible and non-interactive on purpose — this element exists solely so Excalidraw's
+      // own search engine can find it, never for a user to see, select, or edit.
+      locked: true,
+      strokeColor: "transparent",
+      backgroundColor: "transparent",
+    };
+  });
+  return [...updated, ...created];
 }
 
 export function createEmptyAnnotationScene(): AnnotationScene {
