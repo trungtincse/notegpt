@@ -1,5 +1,6 @@
 {
   "name": "notegpt",
+  "license": "MIT",
   "private": true,
   "version": "0.1.12",
   "type": "module",
