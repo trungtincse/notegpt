@@ -119,13 +119,13 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
   };
 
   const handleRemoveBlock = (blockId: string) => {
-    if (!window.confirm("Delete this note? This can't be undone.")) return;
+    if (!window.confirm("Delete this card? This can't be undone.")) return;
     removeMarkdownBlock(blockId);
   };
 
   const startRename = (block: (typeof note.markdownBlocks)[number], index: number) => {
     setRenamingBlockId(block.id);
-    setRenameDraft(block.title ?? `Note ${index + 1}`);
+    setRenameDraft(block.title ?? `Card ${index + 1}`);
   };
 
   const commitRename = () => {
@@ -202,12 +202,12 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
                         }}
                       />
                     ) : (
-                      <span className="notegpt-markdown-tab-label">{block.title || `Note ${index + 1}`}</span>
+                      <span className="notegpt-markdown-tab-label">{block.title || `Card ${index + 1}`}</span>
                     )}
                     <button
                       type="button"
                       className="notegpt-markdown-tab-remove"
-                      aria-label="Delete note"
+                      aria-label="Delete card"
                       onClick={(event) => {
                         event.stopPropagation();
                         handleRemoveBlock(block.id);
@@ -217,7 +217,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
                     </button>
                   </div>
                 ))}
-                <button type="button" className="notegpt-markdown-tab-add" aria-label="Add note" onClick={handleAddBlock}>
+                <button type="button" className="notegpt-markdown-tab-add" aria-label="Add card" onClick={handleAddBlock}>
                   <Plus size={14} />
                 </button>
               </div>
@@ -232,10 +232,10 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
                 />
               ) : (
                 <div className="notegpt-markdown-empty-state">
-                  <p>This note has no text yet.</p>
+                  <p>This card has no text yet.</p>
                   <button type="button" className="notegpt-add-block-btn" onClick={handleAddBlock}>
                     <Plus size={16} />
-                    Add note
+                    Add card
                   </button>
                 </div>
               )}
@@ -247,7 +247,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
             {mode === "annotation" && <Toolbar excalidrawApiRef={excalidrawApiRef} onPickNoteLink={onPickNoteLink} />}
             <div className="notegpt-markdown-pane">
               {/* Backfills a canvas embeddable for any block that doesn't have one yet
-                  (new blocks added via the "+ Add note" button above, since that button
+                  (new blocks added via the "+ Add card" button above, since that button
                   only exists while this whole subtree is unmounted — see
                   ensureMarkdownElements/AnnotationOverlay). This relies on AnnotationOverlay
                   genuinely (re)mounting on every markdown<->annotation tab switch; if this

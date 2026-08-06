@@ -30,7 +30,7 @@ export interface AnnotationOverlayProps {
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
   /** Creates a brand new markdown block with the given content and returns its id — called
    * when a paste onto the canvas is detected as Markdown (see looksLikeMarkdown), so it can
-   * become its own note instead of a plain Excalidraw text element. Omitted (falls back to
+   * become its own card instead of a plain Excalidraw text element. Omitted (falls back to
    * Excalidraw's own default paste handling for markdown-looking text too) in contexts with no
    * notion of adding a block, e.g. PrintView. */
   onCreateMarkdownBlock?: (markdown: string) => string;
@@ -439,7 +439,7 @@ export function AnnotationOverlay({
   );
 
   // Seeds the pending-block set at mount (only ever run once — deliberately empty deps —
-  // so a block added later via "+ Add note" can't re-trigger this) and arms a short fallback
+  // so a block added later via "+ Add card" can't re-trigger this) and arms a short fallback
   // timer. Runs regardless of `shouldAutoCenter`/`centerOnMount` — see point (4) above.
   //
   // Deliberately does NOT bail out just because `apiRef.current` isn't set yet: the
@@ -576,8 +576,8 @@ export function AnnotationOverlay({
             if (api) await insertTiktokEmbeddable(api, tiktok.videoUrl);
             return false;
           }
-          // Markdown-looking pasted text becomes its own note (a markdown block embeddable,
-          // same as one added via the "+ Add note" tab) instead of a plain Excalidraw text
+          // Markdown-looking pasted text becomes its own card (a markdown block embeddable,
+          // same as one added via the "+ Add card" tab) instead of a plain Excalidraw text
           // element — placed under the cursor rather than ensureMarkdownElements' own
           // stagger-to-the-right layout, since that's meant for backfilling blocks that have
           // no position opinion at all, not for a paste the user just aimed at a specific spot.
