@@ -19,7 +19,11 @@ const MARKDOWN_ELEMENT_ID_PREFIX = "notegpt-markdown:";
 /** Matches the reading column width used across the editor UI and PDF export. */
 export const MARKDOWN_TEXT_COLUMN_WIDTH = 900;
 
-const MARKDOWN_DEFAULT_HEIGHT = 400;
+/** Default height for a freshly-created markdown block's canvas embeddable, before its own
+ * ResizeObserver-measured content height (see AnnotationOverlay's MarkdownEmbeddable) corrects
+ * it. Exported so callers that place a new block's embeddable at a specific point (rather than
+ * ensureMarkdownElements's own stagger-to-the-right layout) can center it on that point. */
+export const MARKDOWN_DEFAULT_HEIGHT = 400;
 
 // Never dereferenced — AnnotationOverlay's renderEmbeddable ignores it entirely —
 // but Excalidraw's embeddable validator requires a non-empty `link` before it'll
@@ -59,6 +63,28 @@ export function getLiveMarkdownBlockIds(elements: unknown[]): Set<string> {
   return ids;
 }
 
+/** Builds one markdown block's canvas embeddable element at a given top-left position —
+ * the shared shape ensureMarkdownElements and any caller inserting a block at a specific point
+ * (e.g. AnnotationOverlay placing a paste-created note under the cursor) both build from. */
+export function buildMarkdownElement(blockId: string, x: number, y: number): unknown {
+  return {
+    id: buildMarkdownElementId(blockId),
+    type: "embeddable",
+    x,
+    y,
+    width: MARKDOWN_TEXT_COLUMN_WIDTH,
+    height: MARKDOWN_DEFAULT_HEIGHT,
+    link: MARKDOWN_EMBED_LINK,
+    // Draggable/resizable like a real sticky note — unlike the old single-markdown design,
+    // these are never locked.
+    locked: false,
+    // Otherwise Excalidraw's own defaults (a visible stroke/fill, same as any
+    // other shape) paint a rectangle around the rendered markdown content.
+    strokeColor: "transparent",
+    backgroundColor: "transparent",
+  };
+}
+
 /**
  * Ensures `elements` contains a markdown container element for each of `blockIds`, injecting
  * a default (unlocked — draggable/resizable like any other shape) one for whichever are
@@ -77,22 +103,7 @@ export function ensureMarkdownElements(elements: unknown[], blockIds: string[]):
   const bounds = getSceneBounds(elements);
   const startX = liveCount > 0 ? bounds.maxX + GUTTER : 0;
 
-  const newElements = missing.map((blockId, i) => ({
-    id: buildMarkdownElementId(blockId),
-    type: "embeddable",
-    x: startX + i * (MARKDOWN_TEXT_COLUMN_WIDTH + GUTTER),
-    y: 0,
-    width: MARKDOWN_TEXT_COLUMN_WIDTH,
-    height: MARKDOWN_DEFAULT_HEIGHT,
-    link: MARKDOWN_EMBED_LINK,
-    // Draggable/resizable like a real sticky note — unlike the old single-markdown design,
-    // these are never locked.
-    locked: false,
-    // Otherwise Excalidraw's own defaults (a visible stroke/fill, same as any
-    // other shape) paint a rectangle around the rendered markdown content.
-    strokeColor: "transparent",
-    backgroundColor: "transparent",
-  }));
+  const newElements = missing.map((blockId, i) => buildMarkdownElement(blockId, startX + i * (MARKDOWN_TEXT_COLUMN_WIDTH + GUTTER), 0));
   return [...elements, ...newElements];
 }
 

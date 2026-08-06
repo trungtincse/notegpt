@@ -108,6 +108,16 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
     setActiveBlockId(id);
   };
 
+  // Passed to AnnotationOverlay so a paste it detects as Markdown can become its own note —
+  // addMarkdownBlock/updateMarkdownBlock are both synchronous (see NoteController), so the new
+  // block's id is available immediately for the canvas embeddable AnnotationOverlay inserts
+  // right after calling this.
+  const handleCreateMarkdownBlock = (markdown: string): string => {
+    const id = addMarkdownBlock();
+    updateMarkdownBlock(id, markdown);
+    return id;
+  };
+
   const handleRemoveBlock = (blockId: string) => {
     if (!window.confirm("Delete this note? This can't be undone.")) return;
     removeMarkdownBlock(blockId);
@@ -249,6 +259,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
                 markdownBlocks={note.markdownBlocks}
                 scene={note.annotation}
                 onChange={updateScene}
+                onCreateMarkdownBlock={handleCreateMarkdownBlock}
                 viewMode={mode === "view"}
                 onOpenNoteLink={onOpenNoteLink}
               />

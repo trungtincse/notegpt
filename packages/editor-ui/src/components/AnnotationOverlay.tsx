@@ -1,16 +1,19 @@
-import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, restoreElements } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, restoreElements, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import {
+  buildMarkdownElement,
   ensureMarkdownElements,
   extractTiktokVideoId,
   fetchTiktokOEmbed,
   isMarkdownElementId,
+  looksLikeMarkdown,
   parseMarkdownElementId,
   parseNoteLink,
   parseTiktokEmbedCode,
   reconcileMarkdownSearchElements,
+  MARKDOWN_DEFAULT_HEIGHT,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   type AnnotationScene,
   type MarkdownBlock,
@@ -25,6 +28,12 @@ export interface AnnotationOverlayProps {
   scene: AnnotationScene;
   onChange: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   apiRef?: MutableRefObject<ExcalidrawImperativeAPI | null>;
+  /** Creates a brand new markdown block with the given content and returns its id — called
+   * when a paste onto the canvas is detected as Markdown (see looksLikeMarkdown), so it can
+   * become its own note instead of a plain Excalidraw text element. Omitted (falls back to
+   * Excalidraw's own default paste handling for markdown-looking text too) in contexts with no
+   * notion of adding a block, e.g. PrintView. */
+  onCreateMarkdownBlock?: (markdown: string) => string;
   /** Read-only: disables editing via Excalidraw's own view mode. Panning/zooming
    * (Excalidraw's native camera) works the same in both modes. */
   viewMode?: boolean;
@@ -219,11 +228,27 @@ async function insertTiktokEmbeddable(api: ExcalidrawImperativeAPI, videoUrl: st
   });
 }
 
+/** Inserts a brand new markdown block's embeddable centered on `sceneX`/`sceneY` — the scene-
+ * space equivalent of pasteFromClipboard's own `lastViewportPosition`-based placement, which
+ * isn't reachable from outside Excalidraw's own App instance (see the pointermove tracking in
+ * AnnotationOverlay below). Same restoreElements + append pattern as insertTiktokEmbeddable. */
+function insertMarkdownEmbeddable(api: ExcalidrawImperativeAPI, blockId: string, sceneX: number, sceneY: number): void {
+  const [restored] = restoreElements(
+    [buildMarkdownElement(blockId, sceneX - MARKDOWN_TEXT_COLUMN_WIDTH / 2, sceneY - MARKDOWN_DEFAULT_HEIGHT / 2)] as ExcalidrawElement[],
+    null
+  );
+  api.updateScene({
+    elements: [...api.getSceneElements(), restored],
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+}
+
 export function AnnotationOverlay({
   markdownBlocks,
   scene,
   onChange,
   apiRef: externalApiRef,
+  onCreateMarkdownBlock,
   viewMode = false,
   centerOnMount = true,
   onReady,
@@ -249,6 +274,12 @@ export function AnnotationOverlay({
       onChangeRef.current(elements as unknown[], pickPersistedAppState(appState), files as Record<string, unknown>);
     }, CHANGE_DEBOUNCE_MS)
   ).current;
+
+  // Last known pointer position over this overlay, in viewport (client) coordinates — kept
+  // up to date on every pointer move so onPaste (a ClipboardEvent, which carries no coordinates
+  // of its own) can still place a markdown-detected paste's new note under the cursor, mirroring
+  // Excalidraw's own internal `lastViewportPosition` (not exposed via the imperative API).
+  const lastPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
   // Set by onPaste, consumed by the very next onChange: marks that whatever text elements
   // show up new in that change came from a paste, so they can be corrected to read as normal
@@ -487,7 +518,13 @@ export function AnnotationOverlay({
   );
 
   return (
-    <div className="notegpt-annotation-overlay" style={{ visibility: isPositioned ? "visible" : "hidden" }}>
+    <div
+      className="notegpt-annotation-overlay"
+      style={{ visibility: isPositioned ? "visible" : "hidden" }}
+      onPointerMove={(event) => {
+        lastPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+      }}
+    >
       <Excalidraw
         excalidrawAPI={excalidrawAPI}
         viewModeEnabled={viewMode}
@@ -537,6 +574,22 @@ export function AnnotationOverlay({
           if (tiktok) {
             const api = apiRef.current;
             if (api) await insertTiktokEmbeddable(api, tiktok.videoUrl);
+            return false;
+          }
+          // Markdown-looking pasted text becomes its own note (a markdown block embeddable,
+          // same as one added via the "+ Add note" tab) instead of a plain Excalidraw text
+          // element — placed under the cursor rather than ensureMarkdownElements' own
+          // stagger-to-the-right layout, since that's meant for backfilling blocks that have
+          // no position opinion at all, not for a paste the user just aimed at a specific spot.
+          const api = apiRef.current;
+          if (api && onCreateMarkdownBlock && typeof data.text === "string" && looksLikeMarkdown(data.text)) {
+            const pointer = lastPointerRef.current;
+            const appState = api.getAppState();
+            const { x: sceneX, y: sceneY } = pointer
+              ? viewportCoordsToSceneCoords(pointer, appState)
+              : { x: appState.width / 2 / appState.zoom.value - appState.scrollX, y: appState.height / 2 / appState.zoom.value - appState.scrollY };
+            const blockId = onCreateMarkdownBlock(data.text);
+            insertMarkdownEmbeddable(api, blockId, sceneX, sceneY);
             return false;
           }
           // See the paste-correction block in handleExcalidrawChange for why this only sets a

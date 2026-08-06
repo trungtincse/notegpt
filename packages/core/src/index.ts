@@ -1,6 +1,7 @@
 export * from "./model/Note.js";
 export * from "./model/AnnotationScene.js";
 export * from "./model/markdownSearchText.js";
+export * from "./model/markdownDetection.js";
 export * from "./model/YoutubeEmbed.js";
 export * from "./model/TiktokEmbed.js";
 export * from "./model/PlatformLogoOverlay.js";
