@@ -7,6 +7,7 @@ import {
   Eraser,
   Hand,
   Highlighter as HighlighterIcon,
+  Home,
   Image as ImageIcon,
   LassoSelect,
   Link as LinkIcon,
@@ -324,6 +325,14 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
       </button>
       <button type="button" title="Delete selected" aria-label="Delete selected" onClick={() => dispatchToExcalidraw("Delete")}>
         <Trash2 size={ICON_SIZE} />
+      </button>
+      <button
+        type="button"
+        title="Shift+1 - Zoom to fit"
+        aria-label="Zoom to fit"
+        onClick={() => dispatchToExcalidraw("1", { code: "Digit1", shiftKey: true })}
+      >
+        <Home size={ICON_SIZE} />
       </button>
     </div>
   );

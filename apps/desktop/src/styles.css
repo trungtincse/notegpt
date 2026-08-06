@@ -705,9 +705,8 @@ body {
 }
 
 /* The drawing tools live in .notegpt-toolbar instead — hide Excalidraw's own
-   toolbar/menu/zoom/help chrome. Its zoom controls stay hidden too: panning/
-   zooming is done via wheel, trackpad, or Excalidraw's own keyboard shortcuts
-   (now left enabled, since its camera is the real one in use).
+   toolbar/menu/help chrome. Its zoom controls (.layer-ui__wrapper__footer)
+   are kept visible so users can zoom in/out.
    The "selected shape actions" island (.selected-shape-actions) is deliberately
    left visible — it's the only place to edit font family/size/color, stroke
    color/width etc. on an already-placed element, and .notegpt-toolbar only
@@ -720,7 +719,6 @@ body {
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper > .FixedSideContainer .shapes-section,
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper > .FixedSideContainer .layer-ui__wrapper__top-right,
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper > .FixedSideContainer .App-menu_top__left > *:not(.selected-shape-actions),
-.notegpt-annotation-overlay .excalidraw .layer-ui__wrapper > .layer-ui__wrapper__footer,
 .notegpt-annotation-overlay .excalidraw .layer-ui__wrapper > .scroll-back-to-content {
   display: none;
 }
