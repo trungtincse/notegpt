@@ -743,6 +743,20 @@ body {
   display: none;
 }
 
+/* Excalidraw treats any embeddable as an interactive iframe: hovering near the *center* of one
+   (see its own isIframeLikeElementCenter check) flips its inner content to `pointer-events:
+   auto` — meant for things like a YouTube embed, where you want to click play or scroll inside
+   the video. Our own embeddables (markdown cards, the TikTok thumbnail) have no such internal
+   interaction to preserve, and that auto-enabling was reported as "panning gets stuck the
+   moment the pointer is over a card" — it swallows the drag that would otherwise pan the
+   canvas, exactly like clicking any other normal (non-embeddable) shape would. Forcing it back
+   off unconditionally trades away being able to click a link *inside* rendered markdown text
+   (already unreachable in practice — pointer-events was already off outside that narrow
+   hover-the-center window) for panning always working, which is the one every user needs. */
+.notegpt-annotation-overlay .excalidraw__embeddable-container__inner {
+  pointer-events: none !important;
+}
+
 .notegpt-markdown-preview {
   padding: 16px 20px;
   line-height: 1.6;
