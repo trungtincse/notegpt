@@ -8,6 +8,7 @@ export * from "./model/PlatformLogoOverlay.js";
 export * from "./model/MdNoteFile.js";
 export * from "./model/StorageAdapter.js";
 export * from "./model/noteLink.js";
+export * from "./model/cardLink.js";
 export * from "./controllers/NoteController.js";
 export * from "./controllers/AnnotationController.js";
 export * from "./validation/schemas.js";

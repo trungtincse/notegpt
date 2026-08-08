@@ -4,11 +4,13 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import {
   buildMarkdownElement,
+  buildMarkdownElementId,
   ensureMarkdownElements,
   extractTiktokVideoId,
   fetchTiktokOEmbed,
   isMarkdownElementId,
   looksLikeMarkdown,
+  parseCardLink,
   parseMarkdownElementId,
   parseNoteLink,
   parseTiktokEmbedCode,
@@ -240,6 +242,31 @@ function insertMarkdownEmbeddable(api: ExcalidrawImperativeAPI, blockId: string,
   api.updateScene({
     elements: [...api.getSceneElements(), restored],
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+}
+
+/** Scrolls the camera to a card link's target block and selects its embeddable, so clicking a
+ * "jump to this card" link visibly lands on it — works the same in Annotation and View mode
+ * since it's just camera + selection state, neither of which viewMode disables. Horizontally
+ * centers but vertically aligns the card's *top* edge near the top of the viewport (same
+ * TOP_ALIGN_PADDING math as markReadyAndMaybeCenter's initial auto-center) rather than
+ * centering on the card's middle — for a tall card, centering on the middle leaves its
+ * beginning (the part actually worth landing on) scrolled off above the viewport. Deliberately
+ * skips `scrollToContent`'s own `fitToContent`/`fitToViewport` for the same reason those got
+ * dropped from the old approach: they recompute zoom to fit the target's full bounds, zooming
+ * *out* well past the current level for a tall card. A silent no-op if the block's embeddable
+ * isn't in the current scene (e.g. a stale link left over from a deleted card). */
+function focusCard(api: ExcalidrawImperativeAPI, blockId: string): void {
+  const elementId = buildMarkdownElementId(blockId);
+  const target = api.getSceneElements().find((el) => el.id === elementId && !el.isDeleted);
+  if (!target) return;
+  const appState = api.getAppState();
+  const zoom = appState.zoom.value;
+  const scrollX = appState.width / 2 / zoom - (target.x + target.width / 2);
+  const scrollY = TOP_ALIGN_PADDING / zoom - target.y;
+  api.updateScene({
+    appState: { scrollX, scrollY, selectedElementIds: { [elementId]: true } },
+    captureUpdate: CaptureUpdateAction.NEVER,
   });
 }
 
@@ -557,6 +584,13 @@ export function AnnotationOverlay({
           // would try to open "notegpt:markdown" as a real link and fail.
           if (isMarkdownElementId(element.id)) {
             event.preventDefault();
+            return;
+          }
+          const cardBlockId = parseCardLink(element.link);
+          if (cardBlockId) {
+            event.preventDefault();
+            const api = apiRef.current;
+            if (api) focusCard(api, cardBlockId);
             return;
           }
           const notePath = parseNoteLink(element.link);

@@ -244,7 +244,9 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
         )}
         {(mode === "annotation" || mode === "view") && (
           <div className="notegpt-annotate-pane">
-            {mode === "annotation" && <Toolbar excalidrawApiRef={excalidrawApiRef} onPickNoteLink={onPickNoteLink} />}
+            {mode === "annotation" && (
+              <Toolbar excalidrawApiRef={excalidrawApiRef} onPickNoteLink={onPickNoteLink} markdownBlocks={note.markdownBlocks} />
+            )}
             <div className="notegpt-markdown-pane">
               {/* Backfills a canvas embeddable for any block that doesn't have one yet
                   (new blocks added via the "+ Add card" button above, since that button

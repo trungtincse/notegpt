@@ -1,7 +1,7 @@
 import { CaptureUpdateAction, FONT_FAMILY } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ToolType } from "@excalidraw/excalidraw/types";
-import { buildNoteLink, parseNoteLink } from "@notegpt/core";
+import { buildCardLink, buildNoteLink, parseCardLink, parseNoteLink, type MarkdownBlock } from "@notegpt/core";
 import {
   ArrowRight,
   Eraser,
@@ -25,6 +25,9 @@ export interface ToolbarProps {
    * if canceled). Desktop-only, so omitted (hiding the "pick another note" option) in contexts
    * without one, e.g. a future web build. */
   onPickNoteLink?: () => Promise<string | null>;
+  /** This note's own cards, so the link popover can offer "jump to this card" as a link target
+   * (see buildCardLink/AnnotationOverlay's onLinkOpen) alongside a real URL or another note. */
+  markdownBlocks: MarkdownBlock[];
 }
 
 const HIGHLIGHT_COLOR = "#ffd43b";
@@ -67,7 +70,15 @@ function dispatchToExcalidraw(key: string, options: KeyboardEventInit = {}) {
   container.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options }));
 }
 
-export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
+/** Mirrors EditorShell's own positional "Card N" fallback (see startRename) so a card link's
+ * label stays consistent with what its tab shows, even before the card is given a real title. */
+function cardLabel(blocks: MarkdownBlock[], blockId: string): string {
+  const index = blocks.findIndex((b) => b.id === blockId);
+  if (index === -1) return "(deleted card)";
+  return blocks[index].title || `Card ${index + 1}`;
+}
+
+export function Toolbar({ excalidrawApiRef, onPickNoteLink, markdownBlocks }: ToolbarProps) {
   const [activeTool, setActiveTool] = useState<ToolType | "highlighter">("hand");
   const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
@@ -76,6 +87,9 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
   // Set when the selected element's current link is one of our internal note links, so the
   // popover can show what it's currently pointing at instead of a raw encoded URL.
   const [linkTargetNotePath, setLinkTargetNotePath] = useState<string | null>(null);
+  // Same idea, for a link to one of this note's own cards (see buildCardLink) — holds the
+  // target block's id, not its label, since the label can change (rename) after the link is set.
+  const [linkTargetCardId, setLinkTargetCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!linkPopoverOpen) return;
@@ -143,9 +157,11 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
     const target = api.getSceneElements().find((el) => el.id === selectedIds[0]);
     if (!target) return;
     const internalPath = parseNoteLink(target.link);
+    const cardId = parseCardLink(target.link);
     setLinkTargetId(target.id);
     setLinkTargetNotePath(internalPath);
-    setLinkDraft(internalPath ? "" : (target.link ?? ""));
+    setLinkTargetCardId(cardId);
+    setLinkDraft(internalPath || cardId ? "" : (target.link ?? ""));
     setLinkPopoverOpen(true);
   };
 
@@ -167,6 +183,11 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
     const path = await onPickNoteLink();
     if (!path) return;
     applyLink(buildNoteLink(path));
+    setLinkPopoverOpen(false);
+  };
+
+  const handlePickCard = (blockId: string) => {
+    applyLink(buildCardLink(blockId));
     setLinkPopoverOpen(false);
   };
 
@@ -248,6 +269,11 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
               Linked to note: {linkTargetNotePath}
             </div>
           )}
+          {linkTargetCardId && (
+            <div className="notegpt-link-popover-current">
+              Linked to card: {cardLabel(markdownBlocks, linkTargetCardId)}
+            </div>
+          )}
           <input
             type="text"
             className="notegpt-link-popover-input"
@@ -264,6 +290,24 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink }: ToolbarProps) {
             <button type="button" className="notegpt-link-popover-pick-note" onClick={() => void handlePickNoteLink()}>
               Choose another note…
             </button>
+          )}
+          {markdownBlocks.length > 0 && (
+            <select
+              className="notegpt-link-popover-pick-note"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) handlePickCard(e.target.value);
+              }}
+            >
+              <option value="" disabled>
+                Link to a card in this note…
+              </option>
+              {markdownBlocks.map((block, index) => (
+                <option key={block.id} value={block.id}>
+                  {block.title || `Card ${index + 1}`}
+                </option>
+              ))}
+            </select>
           )}
           <div className="notegpt-link-popover-actions">
             <button type="button" className="notegpt-link-popover-btn danger" onClick={clearLink}>
