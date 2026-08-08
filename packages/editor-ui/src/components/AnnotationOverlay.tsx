@@ -308,6 +308,13 @@ export function AnnotationOverlay({
   // Excalidraw's own internal `lastViewportPosition` (not exposed via the imperative API).
   const lastPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
+  // Camera positions to jump back to (LIFO), one pushed per focusCard jump — lets Alt+Left
+  // undo a "click a card link" jump the same way a browser's back button undoes following a
+  // link, without which the pre-jump scroll position (often somewhere the user had scrolled to
+  // manually, not derivable from anything else) would just be lost. Scoped to this component
+  // instance, so it naturally resets whenever a different note mounts a fresh AnnotationOverlay.
+  const cameraHistoryRef = useRef<Array<{ scrollX: number; scrollY: number; zoom: AppState["zoom"] }>>([]);
+
   // Set by onPaste, consumed by the very next onChange: marks that whatever text elements
   // show up new in that change came from a paste, so they can be corrected to read as normal
   // body text (see below) instead of Excalidraw's default hand-drawn font/current draw color.
@@ -553,6 +560,27 @@ export function AnnotationOverlay({
     [apiRef]
   );
 
+  const goBackCamera = useCallback(() => {
+    const api = apiRef.current;
+    const previous = cameraHistoryRef.current.pop();
+    if (!api || !previous) return;
+    api.updateScene({ appState: previous, captureUpdate: CaptureUpdateAction.NEVER });
+  }, [apiRef]);
+
+  // Alt+Left mirrors a browser's back button — not bound through Toolbar's own keydown
+  // handler since that one only mounts in Annotation mode (see EditorShell), but jumping back
+  // needs to work in View too, where a clicked card link is just as likely to be followed.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === "ArrowLeft") {
+        event.preventDefault();
+        goBackCamera();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [goBackCamera]);
+
   return (
     <div
       className="notegpt-annotation-overlay"
@@ -599,7 +627,11 @@ export function AnnotationOverlay({
           if (cardBlockId) {
             event.preventDefault();
             const api = apiRef.current;
-            if (api) focusCard(api, cardBlockId);
+            if (api) {
+              const appState = api.getAppState();
+              cameraHistoryRef.current.push({ scrollX: appState.scrollX, scrollY: appState.scrollY, zoom: appState.zoom });
+              focusCard(api, cardBlockId);
+            }
             return;
           }
           const notePath = parseNoteLink(element.link);
