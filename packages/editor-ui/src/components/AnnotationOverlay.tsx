@@ -25,7 +25,7 @@ import {
   type MarkdownBlock,
   type MediaKind,
 } from "@notegpt/core";
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import { debounce } from "../utils/debounce.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import { DEFAULT_STROKE_COLOR, MIN_STROKE_WIDTH, PASTED_TEXT_COLOR } from "./Toolbar.js";
@@ -207,31 +207,148 @@ function TiktokThumbnail({
  * player pointed at the app's own `mdnote-media:` protocol — nothing about the file itself ever
  * passes through this component or gets inlined; the protocol handler in the Electron main
  * process (mediaProtocol.ts) streams it straight from disk by the path encoded in the link. */
-function MediaPlayer({ kind, src }: { kind: MediaKind; src: string }) {
-  // The `notegpt-media-embeddable` class is what apps/desktop/src/styles.css keys off of to
-  // exclude media cards from the blanket "disable pointer-events on embeddable content" rule
-  // (added so panning over a markdown/TikTok card doesn't get swallowed) — without it, this
-  // player's own controls (play/pause/seek) would be just as unclickable as those cards'
-  // content deliberately is.
+/** A pinned playback position (seconds), stored on the element itself (see the "Set start
+ * here" button below) rather than encoded into its `link` — keeps "where the file is" separate
+ * from "where to start playing it", and Excalidraw already persists `customData` on every
+ * element for free, so this needs no new storage of its own. */
+interface MediaCustomData {
+  startTime?: number;
+}
+
+/** "m:ss" (e.g. "2:05"), not raw seconds — matches how every video player's own scrubber
+ * displays position, so a value copied from there (or just eyeballed) pastes in directly. */
+function formatTimestamp(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Inverse of formatTimestamp — also accepts a bare number of seconds (no colon), since typing
+ * e.g. "90" for "a minute thirty" is a reasonable shorthand too. Null for anything that's
+ * neither, rather than guessing. */
+function parseTimestamp(text: string): number | null {
+  const trimmed = text.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const match = /^(\d+):([0-5]?\d)$/.exec(trimmed);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function MediaPlayer({
+  kind,
+  element,
+  apiRef,
+  viewMode,
+}: {
+  kind: MediaKind;
+  element: ExcalidrawElement;
+  apiRef: MutableRefObject<ExcalidrawImperativeAPI | null>;
+  /** Hides "Set start here" — a read-only View has nothing to pin a start time *for*, since
+   * there's no way to get back into Annotation-only editing gestures there anyway. */
+  viewMode: boolean;
+}) {
+  const src = typeof element.link === "string" ? element.link : "";
+  const elementId = element.id;
+  const mediaRef = useRef<HTMLMediaElement>(null);
+  const startTime = (element.customData as MediaCustomData | undefined)?.startTime;
+  // The typed-time input's own draft text — seeded from the persisted value once (not kept in
+  // sync on every re-render, which would clobber whatever the user is mid-typing) and updated
+  // by hand whenever either "set" action actually commits a new value below.
+  const [timeDraft, setTimeDraft] = useState(() => formatTimestamp(startTime ?? 0));
+  // Applies the pinned start time once per mount (on the first loadedmetadata, when seeking is
+  // finally possible) — not on every render/visibility toggle, or resuming playback after the
+  // card scrolls out of view and back in (see MarkdownEmbeddable's own "stays mounted while
+  // off-screen" note) would keep yanking playback back to the pinned point instead of leaving
+  // wherever the user had actually gotten to.
+  const appliedStartTimeRef = useRef(false);
+
+  const handleLoadedMetadata = () => {
+    if (appliedStartTimeRef.current) return;
+    appliedStartTimeRef.current = true;
+    if (startTime && mediaRef.current) mediaRef.current.currentTime = startTime;
+  };
+
+  /** Shared by both ways of setting the start time: persists it on the element, and seeks the
+   * player there immediately so there's visible feedback either way (for a typed value, that's
+   * also the only way to preview it landed on the right spot). */
+  const applyStartTime = (nextStartTime: number) => {
+    const api = apiRef.current;
+    if (!api) return;
+    api.updateScene({
+      elements: api.getSceneElements().map((el) => (el.id === elementId ? { ...el, customData: { ...el.customData, startTime: nextStartTime } } : el)),
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    if (mediaRef.current) mediaRef.current.currentTime = nextStartTime;
+    setTimeDraft(formatTimestamp(nextStartTime));
+  };
+
+  const handleApplyTypedTime = () => {
+    const parsed = parseTimestamp(timeDraft);
+    if (parsed !== null) applyStartTime(parsed);
+  };
+
+  // The side panel sits beside the actual player (a flex row splitting this element's own box)
+  // rather than overlaid on top of it, so it never sits on top of video content or the player's
+  // own on-screen controls. Its own pointer-events override (see styles.css) is scoped to just
+  // this panel, not the player next to it — so typing/setting a start time always works without
+  // the "hover the embeddable's center first" dance Excalidraw's own iframe activation model
+  // otherwise requires, while dragging the player itself to move/select it still does too.
+  // `notegpt-media-embeddable-view` forces that same pointer-events override onto the *whole*
+  // player, not just a side panel, but only in View — Excalidraw's hover-to-activate gesture
+  // needs interactions view mode doesn't process, so the player's own controls never actually
+  // activated there at all (confirmed: play/pause never responded to a click). Forcing it on
+  // unconditionally has no downside specific to View: elements can't be moved there regardless
+  // of pointer-events, since view mode already disables repositioning entirely.
   return (
-    <div className="notegpt-media-embeddable" style={{ width: "100%", height: "100%" }}>
-      {kind === "audio" ? (
-        <audio src={src} controls style={{ width: "100%" }} />
-      ) : (
-        <video src={src} controls style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }} />
+    <div
+      className={viewMode ? "notegpt-media-embeddable notegpt-media-embeddable-view" : "notegpt-media-embeddable"}
+      style={{ width: "100%", height: "100%", display: "flex" }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {kind === "audio" ? (
+          <audio ref={mediaRef as RefObject<HTMLAudioElement>} src={src} controls style={{ width: "100%" }} onLoadedMetadata={handleLoadedMetadata} />
+        ) : (
+          <video
+            ref={mediaRef as RefObject<HTMLVideoElement>}
+            src={src}
+            controls
+            style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }}
+            onLoadedMetadata={handleLoadedMetadata}
+          />
+        )}
+      </div>
+      {!viewMode && (
+        <div className="notegpt-media-side-panel">
+          <div className="notegpt-media-start-input-row">
+            <input
+              type="text"
+              className="notegpt-media-start-input"
+              placeholder="m:ss"
+              title="Start time (m:ss)"
+              value={timeDraft}
+              onChange={(event) => setTimeDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleApplyTypedTime();
+              }}
+            />
+            <button type="button" className="notegpt-media-set-start-btn" title="Set start time to what's typed above" onClick={handleApplyTypedTime}>
+              Set
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-// Fallback sizes for a freshly-inserted media embeddable — video guesses a 16:9 box big enough
-// to be watchable without opening huge by default; audio is just tall enough for native
-// browser transport controls (play/pause/seek/volume), since there's no visual content to size
-// around.
-const VIDEO_EMBED_FALLBACK_WIDTH = 480;
+// Fallback sizes for a freshly-inserted media embeddable — sized to leave the player itself
+// (video: a 16:9 box; audio: its native transport bar) a reasonable width *after* the 130px
+// "set start time" side panel (see .notegpt-media-side-panel, just a time input + one button)
+// takes its own share, not counting the panel's width against the player's.
+const VIDEO_EMBED_FALLBACK_WIDTH = 610;
 const VIDEO_EMBED_FALLBACK_HEIGHT = 270;
-const AUDIO_EMBED_FALLBACK_WIDTH = 320;
-const AUDIO_EMBED_FALLBACK_HEIGHT = 54;
+const AUDIO_EMBED_FALLBACK_WIDTH = 450;
+const AUDIO_EMBED_FALLBACK_HEIGHT = 64;
 
 // Fallback size (TikTok's own long-documented default embed card dimensions — the player
 // chrome plus its like/comment/share icon column) for a freshly-inserted embeddable, before
@@ -668,7 +785,7 @@ export function AnnotationOverlay({
           const mediaPath = typeof element.link === "string" ? parseMediaLink(element.link) : null;
           if (mediaPath !== null) {
             const kind = detectMediaKind(mediaPath, "");
-            if (kind) return <MediaPlayer key={element.id} kind={kind} src={element.link as string} />;
+            if (kind) return <MediaPlayer key={element.id} kind={kind} element={element} apiRef={apiRef} viewMode={viewMode} />;
           }
           return null;
         }}

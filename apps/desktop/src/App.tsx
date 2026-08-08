@@ -73,6 +73,16 @@ export function App() {
   });
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  // Set alongside selectedFilePath by handleNewNote, read once by the EditorShell it causes to
+  // mount (via its initialMode prop) so a brand new, still-empty note opens straight on
+  // Annotation instead of Markdown — cleared right after by the effect below so navigating back
+  // to that same note later goes back to the normal (content-based) default instead of forcing
+  // Annotation forever.
+  const [newNoteFilePath, setNewNoteFilePath] = useState<string | null>(null);
+  useEffect(() => {
+    if (newNoteFilePath) setNewNoteFilePath(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFilePath]);
   // Shows the bundled intro note (view mode first) the very first time the app is ever opened,
   // replacing the empty-state placeholder in <main> until the user picks a real note or folder.
   // Persisted via mdnote:getHasSeenWelcome/markWelcomeSeen so it never reappears on later
@@ -250,7 +260,10 @@ export function App() {
     const filePath = adapter.getFilePathForNote(note.id);
     setDraftTitle("");
     await refreshNotes();
-    if (filePath) setSelectedFilePath(filePath);
+    if (filePath) {
+      setNewNoteFilePath(filePath);
+      setSelectedFilePath(filePath);
+    }
   }, [adapter, draftTitle, refreshNotes]);
 
   const handleDeleteNote = useCallback(
@@ -520,6 +533,7 @@ export function App() {
             key={`${selectedFilePath}:${reloadToken}`}
             storage={pathAdapter}
             noteId={selectedFilePath}
+            initialMode={selectedFilePath === newNoteFilePath ? "annotation" : undefined}
             onOpenNoteLink={handleOpenNoteLink}
             onPickNoteLink={window.mdnote.pickMdnoteFile}
           />
