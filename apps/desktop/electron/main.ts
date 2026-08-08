@@ -3,6 +3,11 @@ import { app, BrowserWindow, Menu } from "electron";
 import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
 import { screen } from "electron";
+// Registers mdnote-media:'s privileges as a side effect of import — must happen before
+// app.whenReady() (see registerSchemesAsPrivileged's own requirement), whereas
+// registerMediaProtocolHandler (the actual request handler) needs the opposite: called only
+// once the app is ready, alongside this file's other IPC/handler registration below.
+import { registerMediaProtocolHandler } from "./mediaProtocol.js";
 import { startRendererServer } from "./rendererServer.js";
 
 // Chromium's zygote/GPU process sandbox fails to spawn on some Linux kernels even when
@@ -149,6 +154,7 @@ app.whenReady().then(async () => {
     }
   }
 
+  registerMediaProtocolHandler();
   registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();

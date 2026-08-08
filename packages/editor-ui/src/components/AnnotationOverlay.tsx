@@ -5,6 +5,8 @@ import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw
 import {
   buildMarkdownElement,
   buildMarkdownElementId,
+  buildMediaLink,
+  detectMediaKind,
   ensureMarkdownElements,
   extractTiktokVideoId,
   fetchTiktokOEmbed,
@@ -12,13 +14,16 @@ import {
   looksLikeMarkdown,
   parseCardLink,
   parseMarkdownElementId,
+  parseMediaLink,
   parseNoteLink,
   parseTiktokEmbedCode,
   reconcileMarkdownSearchElements,
+  resolveLocalFilePath,
   MARKDOWN_DEFAULT_HEIGHT,
   MARKDOWN_TEXT_COLUMN_WIDTH,
   type AnnotationScene,
   type MarkdownBlock,
+  type MediaKind,
 } from "@notegpt/core";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { debounce } from "../utils/debounce.js";
@@ -198,6 +203,36 @@ function TiktokThumbnail({
   );
 }
 
+/** Renders a pasted local video/audio file (see @notegpt/core's buildMediaLink) as a real HTML5
+ * player pointed at the app's own `mdnote-media:` protocol — nothing about the file itself ever
+ * passes through this component or gets inlined; the protocol handler in the Electron main
+ * process (mediaProtocol.ts) streams it straight from disk by the path encoded in the link. */
+function MediaPlayer({ kind, src }: { kind: MediaKind; src: string }) {
+  // The `notegpt-media-embeddable` class is what apps/desktop/src/styles.css keys off of to
+  // exclude media cards from the blanket "disable pointer-events on embeddable content" rule
+  // (added so panning over a markdown/TikTok card doesn't get swallowed) — without it, this
+  // player's own controls (play/pause/seek) would be just as unclickable as those cards'
+  // content deliberately is.
+  return (
+    <div className="notegpt-media-embeddable" style={{ width: "100%", height: "100%" }}>
+      {kind === "audio" ? (
+        <audio src={src} controls style={{ width: "100%" }} />
+      ) : (
+        <video src={src} controls style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }} />
+      )}
+    </div>
+  );
+}
+
+// Fallback sizes for a freshly-inserted media embeddable — video guesses a 16:9 box big enough
+// to be watchable without opening huge by default; audio is just tall enough for native
+// browser transport controls (play/pause/seek/volume), since there's no visual content to size
+// around.
+const VIDEO_EMBED_FALLBACK_WIDTH = 480;
+const VIDEO_EMBED_FALLBACK_HEIGHT = 270;
+const AUDIO_EMBED_FALLBACK_WIDTH = 320;
+const AUDIO_EMBED_FALLBACK_HEIGHT = 54;
+
 // Fallback size (TikTok's own long-documented default embed card dimensions — the player
 // chrome plus its like/comment/share icon column) for a freshly-inserted embeddable, before
 // TiktokThumbnail's own load-time height correction kicks in once the thumbnail has loaded.
@@ -222,6 +257,23 @@ async function insertTiktokEmbeddable(api: ExcalidrawImperativeAPI, videoUrl: st
   const sceneY = appState.height / 2 / zoom - appState.scrollY - height / 2;
   const [restored] = restoreElements(
     [{ type: "embeddable", x: sceneX, y: sceneY, width, height, link: videoUrl }] as ExcalidrawElement[],
+    null
+  );
+  api.updateScene({
+    elements: [...api.getSceneElements(), restored],
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+}
+
+/** Inserts a pasted local video/audio file as its own embeddable, centered under the cursor —
+ * same placement approach as insertMarkdownEmbeddable below, for the same reason (a paste
+ * should land where the user aimed it, not wherever ensureMarkdownElements' layout would put
+ * an unrelated kind of element). */
+function insertMediaEmbeddable(api: ExcalidrawImperativeAPI, kind: MediaKind, absolutePath: string, sceneX: number, sceneY: number): void {
+  const width = kind === "video" ? VIDEO_EMBED_FALLBACK_WIDTH : AUDIO_EMBED_FALLBACK_WIDTH;
+  const height = kind === "video" ? VIDEO_EMBED_FALLBACK_HEIGHT : AUDIO_EMBED_FALLBACK_HEIGHT;
+  const [restored] = restoreElements(
+    [{ type: "embeddable", x: sceneX - width / 2, y: sceneY - height / 2, width, height, link: buildMediaLink(absolutePath) }] as ExcalidrawElement[],
     null
   );
   api.updateScene({
@@ -613,6 +665,11 @@ export function AnnotationOverlay({
           if (tiktokVideoId !== null) {
             return <TiktokThumbnail key={element.id} element={element} apiRef={apiRef} />;
           }
+          const mediaPath = typeof element.link === "string" ? parseMediaLink(element.link) : null;
+          if (mediaPath !== null) {
+            const kind = detectMediaKind(mediaPath, "");
+            if (kind) return <MediaPlayer key={element.id} kind={kind} src={element.link as string} />;
+          }
           return null;
         }}
         onLinkOpen={(element, event) => {
@@ -640,7 +697,7 @@ export function AnnotationOverlay({
             onOpenNoteLink?.(notePath);
           }
         }}
-        onPaste={async (data) => {
+        onPaste={async (data, event) => {
           // TikTok's own "Copy embed code" HTML has no Excalidraw-recognized URL pattern (see
           // parseTiktokEmbedCode) — handled here, before Excalidraw's default paste ever sees
           // it, so it doesn't get misparsed into an embeddable linking at the author's profile
@@ -649,6 +706,41 @@ export function AnnotationOverlay({
           if (tiktok) {
             const api = apiRef.current;
             if (api) await insertTiktokEmbeddable(api, tiktok.videoUrl);
+            return false;
+          }
+          // A file copied from the OS file manager (not a screenshot/image — Excalidraw's own
+          // pasteFromClipboard already special-cases and consumes those before onPaste ever
+          // fires). On Windows/macOS this shows up as a real `File` that Electron augments with
+          // `.path` (the absolute filesystem path — see @notegpt/core's buildMediaLink for why
+          // that's stored directly rather than reading the file's bytes ourselves). Linux file
+          // managers (Nautilus, Dolphin, ...) don't populate clipboardData.files on "Copy" at
+          // all — there the file reference only ever arrives as text, either a `text/uri-list`
+          // payload or (confirmed against a real paste) a bare path in `data.text` — see
+          // resolveLocalFilePath for why both need handling.
+          const pastedFile = event?.clipboardData?.files[0] as (File & { path?: string }) | undefined;
+          let mediaPath = pastedFile?.path ?? null;
+          let mediaKind = mediaPath ? detectMediaKind(mediaPath, pastedFile?.type ?? "") : null;
+          if (!mediaKind) {
+            const clipboardText = event?.clipboardData?.getData("text/uri-list") || (typeof data.text === "string" ? data.text : "");
+            const resolvedPath = clipboardText ? resolveLocalFilePath(clipboardText) : null;
+            if (resolvedPath) {
+              const kind = detectMediaKind(resolvedPath, "");
+              if (kind) {
+                mediaPath = resolvedPath;
+                mediaKind = kind;
+              }
+            }
+          }
+          if (mediaPath && mediaKind) {
+            const api = apiRef.current;
+            if (api) {
+              const pointer = lastPointerRef.current;
+              const appState = api.getAppState();
+              const { x: sceneX, y: sceneY } = pointer
+                ? viewportCoordsToSceneCoords(pointer, appState)
+                : { x: appState.width / 2 / appState.zoom.value - appState.scrollX, y: appState.height / 2 / appState.zoom.value - appState.scrollY };
+              insertMediaEmbeddable(api, mediaKind, mediaPath, sceneX, sceneY);
+            }
             return false;
           }
           // Markdown-looking pasted text becomes its own card (a markdown block embeddable,
