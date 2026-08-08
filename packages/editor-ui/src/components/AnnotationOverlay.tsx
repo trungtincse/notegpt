@@ -442,6 +442,15 @@ export function AnnotationOverlay({
       const api = apiRef.current;
       if (!api) return;
       const rounded = Math.round(height);
+      // A real card's content is never 0px tall — this is Excalidraw's ResizeObserver reporting
+      // a *hidden* container (it sets `display: none` on a card's embeddable the moment it
+      // scrolls out of view, without unmounting MarkdownEmbeddable — see
+      // shouldRender/isVisible in its own renderEmbeddables()), which collapses to 0×0
+      // regardless of its real content size. Writing that spurious 0 into the element
+      // permanently corrupted its stored height, so once it scrolled back into a position where
+      // it *should* render again, a 0-height box never does — confirmed via `__debugCards()`
+      // (see the temporary console helper below): every card's persisted height had gone to 0.
+      if (rounded <= 0) return;
       const elements = api.getSceneElements();
       const target = elements.find((el) => el.id === elementId);
       if (!target) return;
