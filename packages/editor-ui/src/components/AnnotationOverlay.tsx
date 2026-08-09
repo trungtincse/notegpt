@@ -1,4 +1,4 @@
-import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, restoreElements, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, convertToExcalidrawElements, restoreElements, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -488,6 +488,12 @@ export function AnnotationOverlay({
   // show up new in that change came from a paste, so they can be corrected to read as normal
   // body text (see below) instead of Excalidraw's default hand-drawn font/current draw color.
   const justPastedRef = useRef(false);
+  // The raw clipboard string for a plain-text paste (see justPastedRef), stashed here because
+  // Excalidraw's own default paste (addTextFromPaste) splits it on "\n" into one text element
+  // per non-blank line instead of a single multi-line element — the paste-correction block below
+  // uses this to collapse those back into the one element the user actually pasted, rather than
+  // re-joining the split elements' own (blank-line-stripped) text.
+  const pastedTextRef = useRef<string | null>(null);
   // Snapshot of element ids as of the previous onChange, so the paste correction below can
   // tell which elements in the new list are brand new rather than touching pre-existing ones.
   const priorElementIdsRef = useRef<Set<string>>(new Set());
@@ -512,6 +518,34 @@ export function AnnotationOverlay({
       // Excalidraw's own paste handling and made the pasted text unselectable via box-select.
       if (api && justPastedRef.current) {
         justPastedRef.current = false;
+        const rawPastedText = pastedTextRef.current;
+        pastedTextRef.current = null;
+        const newElements = elements.filter((el) => !priorElementIds.has(el.id));
+        const newTextElements = newElements.filter((el) => el.type === "text");
+        // Collapse Excalidraw's own per-line split (see pastedTextRef's comment) back into the
+        // single element the user actually pasted, using the raw clipboard string itself (not a
+        // re-join of the split lines, which would have already lost any blank lines between
+        // paragraphs). Only when the whole paste was text and nothing else (an image/embeddable
+        // pasted alongside some text) — anything mixed in is left exactly as Excalidraw made it.
+        if (rawPastedText && newTextElements.length > 1 && newTextElements.length === newElements.length) {
+          const minX = Math.min(...newTextElements.map((el) => el.x));
+          const minY = Math.min(...newTextElements.map((el) => el.y));
+          const [merged] = convertToExcalidrawElements([
+            {
+              type: "text",
+              x: minX,
+              y: minY,
+              text: rawPastedText,
+              fontSize: newTextElements[0].fontSize,
+              strokeColor: PASTED_TEXT_COLOR,
+              fontFamily: FONT_FAMILY.Helvetica,
+            },
+          ]);
+          const corrected = [...elements.filter((el) => el.type !== "text" || priorElementIds.has(el.id)), merged as ExcalidrawElement];
+          api.updateScene({ elements: corrected, captureUpdate: CaptureUpdateAction.NEVER });
+          debouncedOnChange(corrected, appState, files);
+          return;
+        }
         const corrected = elements.map((el) =>
           el.type === "text" && !priorElementIds.has(el.id)
             ? { ...el, strokeColor: PASTED_TEXT_COLOR, fontFamily: FONT_FAMILY.Helvetica }
@@ -877,7 +911,8 @@ export function AnnotationOverlay({
             return false;
           }
           // See the paste-correction block in handleExcalidrawChange for why this only sets a
-          // flag instead of touching appState/elements here.
+          // flag (and stashes the raw text) instead of touching appState/elements here.
+          pastedTextRef.current = typeof data.text === "string" ? data.text : null;
           justPastedRef.current = true;
           return true;
         }}

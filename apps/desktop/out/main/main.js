@@ -1,10 +1,11 @@
 import { join, extname, dirname, normalize, sep } from "node:path";
-import { ipcMain, dialog, BrowserWindow, app, Menu, screen } from "electron";
+import { ipcMain, dialog, BrowserWindow, app, protocol, Menu, screen } from "electron";
 import { deserializeMdNote, ensureMarkdownElements, getSceneBounds, isVisiblyRendered, extractYoutubeVideoId, getYoutubeWatchUrl, parseNoteLink, concatMarkdownBlocks, serializeMdNote, createBlankNote } from "@notegpt/core";
-import { promises } from "node:fs";
+import { promises, createReadStream } from "node:fs";
 import { PDFDocument, PDFRawStream, PDFName, PDFNumber, PDFArray, PDFDict, PDFString } from "pdf-lib";
 import { encode } from "jpeg-js";
 import { inflateSync } from "node:zlib";
+import { Readable } from "node:stream";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import __cjs_mod__ from "node:module";
@@ -505,6 +506,60 @@ function registerFileHandlers(getWindow, openNoteInNewWindow) {
     return filePath;
   });
 }
+protocol.registerSchemesAsPrivileged([
+  { scheme: "mdnote-media", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
+]);
+const MIME_TYPES$1 = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac"
+};
+function registerMediaProtocolHandler() {
+  protocol.handle("mdnote-media", async (request) => {
+    let filePath;
+    try {
+      filePath = decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/, ""));
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
+    const mimeType = MIME_TYPES$1[extname(filePath).toLowerCase()];
+    if (!mimeType) return new Response("Unsupported file type", { status: 415 });
+    let size;
+    try {
+      size = (await promises.stat(filePath)).size;
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+    const range = request.headers.get("range");
+    const match = range ? /bytes=(\d+)-(\d*)/.exec(range) : null;
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Number(match[2]) : size - 1;
+      const stream2 = createReadStream(filePath, { start, end });
+      return new Response(Readable.toWeb(stream2), {
+        status: 206,
+        headers: {
+          "Content-Type": mimeType,
+          "Content-Range": `bytes ${start}-${end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(end - start + 1)
+        }
+      });
+    }
+    const stream = createReadStream(filePath);
+    return new Response(Readable.toWeb(stream), {
+      status: 200,
+      headers: { "Content-Type": mimeType, "Accept-Ranges": "bytes", "Content-Length": String(size) }
+    });
+  });
+}
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -651,6 +706,7 @@ app.whenReady().then(async () => {
       console.log(`[rendererServer] failed to start, falling back to loadFile: ${err}`);
     }
   }
+  registerMediaProtocolHandler();
   registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
   buildMenu();
