@@ -1,53 +1,14 @@
 import { EditorShell } from "@notegpt/editor-ui";
-import { ChevronDown, FolderOpen, MoreHorizontal, Pin, PinOff, Plus } from "lucide-react";
+import { ChevronDown, FolderOpen, MoreHorizontal, Pin, PinOff, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LocalFsStorageAdapter } from "./adapters/LocalFsStorageAdapter.js";
-
-interface NoteListEntry {
-  filePath: string;
-  title: string;
-  markdown: string;
-  annotationText: string;
-  updatedAt: string;
-}
-
-interface NoteSearchResult {
-  entry: NoteListEntry;
-  titleMatches: boolean;
-  snippet: string | null;
-}
+import { NoteSearchModal } from "./NoteSearchModal.js";
+import { computeSearchResults, type NoteListEntry } from "./searchNotes.js";
 
 type SectionId = "pinned" | "recents" | "all";
 
 const SEARCH_DEBOUNCE_MS = 200;
-const SNIPPET_RADIUS = 40;
 const RECENTS_REFRESH_DELAY_MS = 300;
-
-/** A short excerpt around the first match, so results whose title doesn't match still show *why* they matched. */
-function buildSnippet(text: string, query: string): string | null {
-  const index = text.toLowerCase().indexOf(query);
-  if (index === -1) return null;
-  const start = Math.max(0, index - SNIPPET_RADIUS);
-  const end = Math.min(text.length, index + query.length + SNIPPET_RADIUS);
-  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
-}
-
-/** Wraps every case-insensitive occurrence of `query` in `text` with <mark>, preserving the source text's original casing. */
-function highlightMatches(text: string, query: string): ReactNode {
-  if (!query) return text;
-  const lowerText = text.toLowerCase();
-  const parts: ReactNode[] = [];
-  let cursor = 0;
-  let index = lowerText.indexOf(query, cursor);
-  while (index !== -1) {
-    if (index > cursor) parts.push(text.slice(cursor, index));
-    parts.push(<mark key={index}>{text.slice(index, index + query.length)}</mark>);
-    cursor = index + query.length;
-    index = lowerText.indexOf(query, cursor);
-  }
-  if (cursor < text.length) parts.push(text.slice(cursor));
-  return parts;
-}
 
 /** Orders `notes` by `paths` (most-relevant-first), dropping any path with no matching note
  * (a pinned/recent path from a different folder, or one whose file was since deleted). */
@@ -68,7 +29,7 @@ export function App() {
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
     pinned: false,
-    recents: false,
+    recents: true,
     all: false,
   });
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
@@ -99,6 +60,7 @@ export function App() {
   const [draftTitle, setDraftTitle] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
   // The same note can render in more than one section at once (e.g. pinned + all notes), so
   // "which row is being edited/has its menu open" is keyed by section id + filePath, not just
   // filePath — otherwise every duplicate row would open its input/menu at the same time, and
@@ -150,21 +112,7 @@ export function App() {
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
-  const searchResults = useMemo((): NoteSearchResult[] => {
-    if (!trimmedQuery) return notes.map((entry) => ({ entry, titleMatches: false, snippet: null }));
-    return notes
-      .filter(
-        (n) =>
-          n.title.toLowerCase().includes(trimmedQuery) ||
-          n.markdown.toLowerCase().includes(trimmedQuery) ||
-          n.annotationText.toLowerCase().includes(trimmedQuery)
-      )
-      .map((entry) => {
-        const titleMatches = entry.title.toLowerCase().includes(trimmedQuery);
-        const snippet = titleMatches ? null : (buildSnippet(entry.markdown, trimmedQuery) ?? buildSnippet(entry.annotationText, trimmedQuery));
-        return { entry, titleMatches, snippet };
-      });
-  }, [notes, trimmedQuery]);
+  const searchResults = useMemo(() => computeSearchResults(notes, trimmedQuery), [notes, trimmedQuery]);
 
   const pinnedEntries = useMemo(() => orderByPathList(notes, pinnedPaths), [notes, pinnedPaths]);
   const pinnedSet = useMemo(() => new Set(pinnedPaths), [pinnedPaths]);
@@ -486,37 +434,18 @@ export function App() {
             <Plus size={16} />
           </button>
         </div>
-        <input
-          type="search"
+        <button
+          type="button"
           className="notegpt-note-search"
-          placeholder="Search notes…"
-          value={searchInput}
           disabled={!adapter}
-          onChange={(e) => setSearchInput(e.target.value)}
-        />
-        {trimmedQuery ? (
-          <ul className="notegpt-note-list">
-            {searchResults.map(({ entry, titleMatches, snippet }) =>
-              renderNoteRow(
-                entry,
-                <>
-                  <div className="notegpt-note-list-title">
-                    {titleMatches ? highlightMatches(entry.title, trimmedQuery) : entry.title}
-                  </div>
-                  {snippet && <div className="notegpt-note-list-snippet">{highlightMatches(snippet, trimmedQuery)}</div>}
-                </>,
-                "search"
-              )
-            )}
-            {adapter && searchResults.length === 0 && <li className="notegpt-note-list-empty">No notes match your search.</li>}
-          </ul>
-        ) : (
-          <>
-            {renderSection("pinned", "Pinned", pinnedEntries, true)}
-            {renderSection("recents", "Recents", recentEntries, true)}
-            {renderSection("all", "All Notes", notes, false)}
-          </>
-        )}
+          onClick={() => setSearchModalOpen(true)}
+        >
+          <Search size={14} className="notegpt-note-search-icon" />
+          <span className="notegpt-note-search-label">{searchInput || "Search notes…"}</span>
+        </button>
+        {renderSection("pinned", "Pinned", pinnedEntries, true)}
+        {renderSection("recents", "Recents", recentEntries, true)}
+        {renderSection("all", "All Notes", notes, false)}
       </aside>
       <main className="notegpt-main">
         {selectedFilePath ? (
@@ -551,6 +480,20 @@ export function App() {
           </div>
         )}
       </main>
+      <NoteSearchModal
+        open={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        searchInput={searchInput}
+        onSearchInputChange={setSearchInput}
+        results={searchResults}
+        trimmedQuery={trimmedQuery}
+        selectedFilePath={selectedFilePath}
+        onSelectNote={(filePath) => {
+          setSelectedFilePath(filePath);
+          setSearchModalOpen(false);
+          setSearchInput("");
+        }}
+      />
     </div>
   );
 }

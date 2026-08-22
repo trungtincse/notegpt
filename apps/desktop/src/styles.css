@@ -98,9 +98,187 @@ body {
 }
 
 .notegpt-note-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 6px 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  background: #fff;
+  color: #888;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notegpt-note-search:hover {
+  border-color: #bbb;
+  background: #fafafa;
+}
+
+.notegpt-note-search:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.notegpt-note-search-icon {
+  flex-shrink: 0;
+  color: #999;
+}
+
+.notegpt-note-search-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notegpt-search-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.notegpt-search-modal {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  max-height: 70vh;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.notegpt-search-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.notegpt-search-modal-icon {
+  flex-shrink: 0;
+  color: #999;
+}
+
+.notegpt-search-modal-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  font: inherit;
+}
+
+.notegpt-search-modal-clear {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #7950f2;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.notegpt-search-modal-clear:hover {
+  text-decoration: underline;
+}
+
+.notegpt-search-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+}
+
+.notegpt-search-modal-close:hover {
+  background: #f0f0f0;
+}
+
+.notegpt-search-modal-results {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.notegpt-search-modal-results li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.notegpt-search-modal-results li:hover {
+  background: #f0f0f0;
+}
+
+.notegpt-search-modal-results li.active {
+  background: #e6f0ff;
+}
+
+.notegpt-search-modal-empty {
+  color: #888;
+  cursor: default;
+}
+
+.notegpt-search-modal-empty:hover {
+  background: transparent;
+}
+
+.notegpt-search-modal-result-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notegpt-search-modal-result-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #1e1e1e;
+}
+
+.notegpt-search-modal-result-snippet {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #777;
+  font-size: 12px;
+}
+
+.notegpt-search-modal-result-date {
+  flex-shrink: 0;
+  color: #999;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.notegpt-search-modal-results mark {
+  background: #ffe066;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .notegpt-note-section {
