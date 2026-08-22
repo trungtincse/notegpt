@@ -759,8 +759,19 @@ export function AnnotationOverlay({
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
+      // Covers the "cold mount" case the readiness effect's own fast path (below) can't: for a
+      // brand-new note (zero markdown blocks), `pendingBlockIdsRef` is already seeded to an
+      // empty Set by the time this fires — except when this callback runs BEFORE that effect
+      // (a mount nested inside an async continuation, e.g. right after handleNewNote's `await
+      // adapter.createNote()` — see its own comment for why that ordering isn't guaranteed).
+      // Without this, such a note stays non-interactive (visibility: hidden, so it can't even
+      // receive a right-click) for the full 3s fallback timer with nothing to center on and
+      // nothing left to reach readiness sooner.
+      if (pendingBlockIdsRef.current?.size === 0) {
+        markReadyAndMaybeCenter(api, api.getSceneElements());
+      }
     },
-    [apiRef]
+    [apiRef, markReadyAndMaybeCenter]
   );
 
   const goBackCamera = useCallback(() => {
