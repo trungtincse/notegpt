@@ -465,6 +465,7 @@ export function App() {
             initialMode={selectedFilePath === newNoteFilePath ? "annotation" : undefined}
             onOpenNoteLink={handleOpenNoteLink}
             onPickNoteLink={window.mdnote.pickMdnoteFile}
+            onReadClipboardUriList={window.mdnote.readClipboardUriList}
           />
         ) : showingWelcome && welcomeFilePath ? (
           <EditorShell
@@ -473,6 +474,7 @@ export function App() {
             noteId={welcomeFilePath}
             initialMode="view"
             onOpenNoteLink={handleOpenNoteLink}
+            onReadClipboardUriList={window.mdnote.readClipboardUriList}
           />
         ) : (
           <div style={{ padding: 24, color: "#888" }}>

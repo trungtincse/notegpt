@@ -20,6 +20,8 @@ export interface EditorShellProps {
   onOpenNoteLink?: (filePath: string) => void;
   /** See ToolbarProps.onPickNoteLink. */
   onPickNoteLink?: () => Promise<string | null>;
+  /** See CodeMirrorEditorProps.onReadClipboardUriList. */
+  onReadClipboardUriList?: () => string | null;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface EditorShellProps {
  * enabled — Excalidraw's own camera provides pan/zoom for both. A header
  * switcher moves between the three.
  */
-export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenNoteLink, onPickNoteLink }: EditorShellProps) {
+export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenNoteLink, onPickNoteLink, onReadClipboardUriList }: EditorShellProps) {
   const { note, saveStatus, loadError, load, addMarkdownBlock, updateMarkdownBlock, renameMarkdownBlock, removeMarkdownBlock, controller } =
     useNoteController(storage);
   const { updateScene } = useAnnotationController(controller);
@@ -229,6 +231,7 @@ export function EditorShell({ storage, noteId, initialMode = "markdown", onOpenN
                   initialValue={activeBlock.markdown}
                   editable
                   onChange={(markdown) => updateMarkdownBlock(activeBlock.id, markdown)}
+                  onReadClipboardUriList={onReadClipboardUriList}
                 />
               ) : (
                 <div className="notegpt-markdown-empty-state">

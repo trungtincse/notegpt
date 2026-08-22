@@ -953,6 +953,16 @@ body {
   pointer-events: auto !important;
 }
 
+/* Same "child's auto overrides ancestor's none" technique as .notegpt-media-side-panel above,
+   scoped to just the <audio>/<video> element itself (see MarkdownPreview's image-renderer
+   override, which turns a pasted media file's markdown syntax into one of these) — a markdown
+   card carries no .notegpt-media-embeddable class, so without this its player would inherit the
+   ancestor rule above and render with dead, unclickable native controls. */
+.notegpt-markdown-preview audio,
+.notegpt-markdown-preview video {
+  pointer-events: auto !important;
+}
+
 /* View has no side panel at all (it's editing-only — see MediaPlayer's `!viewMode` guard), so
    this instead forces the override onto the whole player there — see MediaPlayer's own comment
    on `notegpt-media-embeddable-view` for why View needs it applied unconditionally rather than
@@ -1020,6 +1030,23 @@ body {
 
 .notegpt-markdown-preview p {
   margin: 0.6em 0;
+}
+
+.notegpt-markdown-preview audio {
+  display: block;
+  width: 100%;
+  margin: 0.6em 0;
+}
+
+.notegpt-markdown-preview video {
+  display: block;
+  max-width: 100%;
+  margin: 0.6em 0;
+}
+
+.notegpt-markdown-preview img {
+  max-width: 100%;
+  height: auto;
 }
 
 .notegpt-markdown-preview code {

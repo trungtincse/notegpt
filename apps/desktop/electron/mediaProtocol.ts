@@ -3,9 +3,10 @@ import { extname } from "node:path";
 import { promises as fs, createReadStream } from "node:fs";
 import { protocol } from "electron";
 
-// Pasted video/audio cards reference their source file by absolute path (see
-// @notegpt/core's buildMediaLink) instead of inlining it as base64 — this protocol is what
-// actually turns that path back into playable bytes for a <video>/<audio> src. Registered as
+// Pasted video/audio cards, and a local image pasted into markdown text, reference their
+// source file by absolute path (see @notegpt/core's buildMediaLink) instead of inlining it as
+// base64 — this protocol is what actually turns that path back into bytes for a
+// <video>/<audio>/<img> src. Registered as
 // "standard" + "supportFetchAPI" so the renderer can use it exactly like a normal http(s) URL
 // (relative resolution, fetch(), etc.); "stream" so large files don't have to buffer fully
 // into memory first.
@@ -24,6 +25,17 @@ const MIME_TYPES: Record<string, string> = {
   ".m4a": "audio/mp4",
   ".aac": "audio/aac",
   ".flac": "audio/flac",
+  // Local images pasted into markdown text link to their source file the same way (see
+  // CodeMirrorEditor's paste handler) instead of inlining as base64 — same tradeoff as
+  // video/audio (breaks if the file moves, but doesn't bloat the note for a large photo).
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".avif": "image/avif",
 };
 
 /** Registers the `mdnote-media://` protocol handler — must be called once the app is ready

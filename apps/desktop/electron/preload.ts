@@ -1,8 +1,25 @@
 import type { Note } from "@notegpt/core";
-import { contextBridge, ipcRenderer } from "electron";
+import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type { NoteFileSummary } from "./ipc/fileHandlers.js";
 
 export const mdnoteApi = {
+  // A file copied from a GNOME/GTK file manager (Nautilus, ...) can reach the renderer's DOM
+  // `paste` event as a `File` with `clipboardData.types` reporting only "Files" — no
+  // `text/uri-list`/`text/plain` at all, and Electron's usual `.path` augmentation on that File
+  // also absent — even though the OS clipboard genuinely carries a `text/uri-list` target
+  // (confirmed: GTK's own clipboard API sees it fine). Electron's `clipboard` module reads the
+  // *native* clipboard directly rather than going through Chromium's DOM sanitization, so it can
+  // recover that same payload when the DOM API can't — see CodeMirrorEditor's paste handler.
+  readClipboardUriList: (): string | null => {
+    if (!clipboard.availableFormats().includes("text/uri-list")) return null;
+    // `clipboard.readBuffer` doesn't reliably hand back a real Node `Buffer` of *this* realm
+    // (observed: its own `.toString("utf-8")` silently ignored the encoding and fell through to
+    // plain `Array.prototype.toString` — a comma-joined list of byte values). `TextDecoder` is a
+    // Web API that decodes any Uint8Array-like input correctly regardless of which realm/Buffer
+    // subclass constructed it.
+    const text = new TextDecoder("utf-8").decode(clipboard.readBuffer("text/uri-list"));
+    return text || null;
+  },
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke("mdnote:pickFolder"),
   pickMdnoteFile: (): Promise<string | null> => ipcRenderer.invoke("mdnote:pickMdnoteFile"),
   listNotesInFolder: (folderPath: string): Promise<NoteFileSummary[]> =>
