@@ -2,7 +2,7 @@
   "name": "notegpt",
   "license": "MIT",
   "private": true,
-  "version": "0.1.17",
+  "version": "0.1.18",
   "type": "module",
   "packageManager": "pnpm@11.14.0",
   "engines": {
