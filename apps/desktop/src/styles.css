@@ -1050,7 +1050,14 @@ body {
 }
 
 .notegpt-markdown-preview code {
-  background: #f0f0f0;
+  /* Translucent, not opaque: a Pen/Highlighter stroke drawn over a code block is genuinely
+     created on Excalidraw's canvas (confirmed — the pointerdown really does land there), but
+     that canvas layer always paints *underneath* a markdown card's own DOM content (same root
+     cause as the search-highlight-invisible-under-markdown-cards issue elsewhere in this file)
+     — so a fully opaque background here would hide any stroke drawn under it completely, unlike
+     plain paragraph text (no background at all) where a stroke still shows through the gaps.
+     This can't fix the underlying draw-order limitation, only keep it from being total. */
+  background: rgba(240, 240, 240, 0.55);
   padding: 1px 4px;
   border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, monospace;
@@ -1060,6 +1067,15 @@ body {
   display: block;
   padding: 10px;
   overflow-x: auto;
+  /* The only scrollable DOM node inside a markdown card (see MarkdownEmbeddable's `pointer-
+     events: none` ancestor rule further up this file) — without this, the browser can still
+     natively claim a pen/touch drag here as "pan this scrollbox" before that CSS property is
+     even consulted, swallowing the gesture Excalidraw's Pen/Highlighter needs to draw on the
+     canvas underneath. Same fix Excalidraw applies to its own <canvas> for the identical reason
+     (see @excalidraw/excalidraw's own `touch-action: none` on `.excalidraw canvas`). Horizontal
+     mouse-wheel/scrollbar scrolling of long code lines is unaffected — touch-action only governs
+     browser-native touch/pen gesture handling, not those. */
+  touch-action: none;
 }
 
 /* PrintView's own wrapper: deliberately no fixed height / overflow, unlike
