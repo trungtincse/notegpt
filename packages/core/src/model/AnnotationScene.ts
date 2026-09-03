@@ -169,9 +169,14 @@ export function reconcileMarkdownSearchElements(
   const embeddableByBlockId = new Map<string, SearchSyncElementLike>();
   const searchByBlockId = new Map<string, SearchSyncElementLike>();
   for (const el of els) {
-    if (el.isDeleted || typeof el.id !== "string") continue;
+    if (typeof el.id !== "string") continue;
     const embedBlockId = parseMarkdownElementId(el.id);
-    if (embedBlockId !== null) embeddableByBlockId.set(embedBlockId, el);
+    if (embedBlockId !== null && !el.isDeleted) embeddableByBlockId.set(embedBlockId, el);
+    // Deliberately keeps an already-*deleted* search element in this map too (unlike
+    // embeddableByBlockId) — see the empty-markdown branch below for why: without this, a
+    // tombstoned search element for an emptied-out block would look "missing" again on the very
+    // next reconcile, and the `missing`/`created` path further down would mint a second element
+    // with the exact same id instead of just reviving this one once the block has text again.
     const searchBlockId = parseMarkdownSearchElementId(el.id);
     if (searchBlockId !== null) searchByBlockId.set(searchBlockId, el);
   }
@@ -184,29 +189,39 @@ export function reconcileMarkdownSearchElements(
 
     const block = markdownBlocks.find((b) => b.id === blockId);
     const embeddable = embeddableByBlockId.get(blockId);
-    // The block was removed (or its embeddable was) — tombstone the orphaned search text the
-    // same way an embeddable's own deletion is represented, rather than filtering it out.
-    if (!block || !embeddable) {
+    const searchableText = block ? markdownToSearchableText(block.markdown) : "";
+    // The block (or its embeddable) was removed, or its markdown is now empty — tombstone the
+    // search text instead of writing an empty `text`: Excalidraw's own restore() unconditionally
+    // hard-deletes any empty-text `text` element (with a freshly bumped version) on every single
+    // restore pass, which made this element look "missing" again on the very next reconcile and
+    // recreate it forever — confirmed as exactly what a never-typed-into "+ Add card" block
+    // (an empty block, so `searchableText` is "") infinite-looped on.
+    if (!block || !embeddable || !searchableText) {
       if (el.isDeleted) return el;
       changed = true;
       return { ...el, isDeleted: true };
     }
 
-    const searchableText = markdownToSearchableText(block.markdown);
     const needsReposition = el.x !== embeddable.x || el.y !== embeddable.y;
     const needsRetext = el.text !== searchableText;
-    if (!needsReposition && !needsRetext) return el;
+    const needsRevive = el.isDeleted === true;
+    if (!needsReposition && !needsRetext && !needsRevive) return el;
 
     changed = true;
     return {
       ...el,
+      isDeleted: false,
       x: embeddable.x,
       y: embeddable.y,
       ...(needsRetext ? { text: searchableText, originalText: searchableText } : {}),
     };
   });
 
-  const missing = markdownBlocks.filter((b) => !searchByBlockId.has(b.id) && embeddableByBlockId.has(b.id));
+  // Never create one for a block with nothing to search yet (a freshly-added, still-empty card)
+  // — see the tombstone branch above for why an empty `text` element is a trap, not just wasted.
+  const missing = markdownBlocks.filter(
+    (b) => !searchByBlockId.has(b.id) && embeddableByBlockId.has(b.id) && markdownToSearchableText(b.markdown) !== ""
+  );
   if (missing.length === 0) return changed ? updated : elements;
 
   changed = true;

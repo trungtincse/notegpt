@@ -170,4 +170,53 @@ describe("reconcileMarkdownSearchElements", () => {
     const searchEl = (result as TextElementLike[]).find((el) => isMarkdownSearchElementId(el.id))!;
     expect(searchEl.isDeleted).toBe(true);
   });
+
+  // Regression test for a real infinite-update-loop crash: a freshly-added "+ Add card" block
+  // starts out with empty markdown. Excalidraw's own restore() unconditionally hard-deletes any
+  // `text` element with empty content (bumping its version every time), so if this function ever
+  // wrote one out, the very next reconcile would see it as deleted, consider the block "missing
+  // its search element" again (deleted elements used to be excluded from that check), and create
+  // a fresh empty one — forever. These pin down the fix: never create one for empty markdown,
+  // and reaching a stable, unchanging result across repeated calls (the actual crash symptom was
+  // this never converging).
+  it("never creates a search-text element for a block with empty markdown", () => {
+    const embeddable = { id: buildMarkdownElementId("b1"), type: "embeddable", x: 0, y: 0, width: 900 };
+    const scene = [embeddable];
+    const result = reconcileMarkdownSearchElements(scene, [{ id: "b1", markdown: "" }]);
+    expect(result).toBe(scene);
+    expect((result as TextElementLike[]).some((el) => isMarkdownSearchElementId(el.id))).toBe(false);
+  });
+
+  it("converges (stops changing) across repeated reconciles of an empty block, even starting from an already-tombstoned empty-text element", () => {
+    const embeddable = { id: buildMarkdownElementId("b1"), type: "embeddable", x: 0, y: 0, width: 900 };
+    // Simulates the one throwaway element Excalidraw's own restore() would have hard-deleted —
+    // this must settle immediately, not spawn another one.
+    const staleDeletedSearchEl = { id: buildMarkdownSearchElementId("b1"), type: "text", x: 0, y: 0, text: "", isDeleted: true };
+    const scene = [embeddable, staleDeletedSearchEl];
+    const first = reconcileMarkdownSearchElements(scene, [{ id: "b1", markdown: "" }]);
+    const second = reconcileMarkdownSearchElements(first, [{ id: "b1", markdown: "" }]);
+    expect(second).toBe(first);
+  });
+
+  it("tombstones the search-text element when its block's markdown is edited down to empty", () => {
+    const embeddable = { id: buildMarkdownElementId("b1"), type: "embeddable", x: 0, y: 0, width: 900 };
+    const seeded = reconcileMarkdownSearchElements([embeddable], [{ id: "b1", markdown: "hello" }]);
+    const result = reconcileMarkdownSearchElements(seeded, [{ id: "b1", markdown: "" }]);
+    const searchEl = (result as TextElementLike[]).find((el) => isMarkdownSearchElementId(el.id))!;
+    expect(searchEl.isDeleted).toBe(true);
+  });
+
+  it("revives a tombstoned search-text element once its block has markdown again", () => {
+    const embeddable = { id: buildMarkdownElementId("b1"), type: "embeddable", x: 0, y: 0, width: 900 };
+    const emptied = reconcileMarkdownSearchElements(
+      reconcileMarkdownSearchElements([embeddable], [{ id: "b1", markdown: "hello" }]),
+      [{ id: "b1", markdown: "" }]
+    );
+    const result = reconcileMarkdownSearchElements(emptied, [{ id: "b1", markdown: "hello again" }]);
+    const searchEl = (result as TextElementLike[]).find((el) => isMarkdownSearchElementId(el.id))!;
+    expect(searchEl.isDeleted).toBe(false);
+    expect(searchEl.text).toBe("hello again");
+    // Must revive the existing element, not mint a second one with the same id.
+    expect((result as TextElementLike[]).filter((el) => isMarkdownSearchElementId(el.id))).toHaveLength(1);
+  });
 });
