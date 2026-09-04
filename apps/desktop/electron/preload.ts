@@ -48,6 +48,11 @@ export const mdnoteApi = {
     ipcRenderer.on("mdnote:menu-open-folder", listener);
     return () => ipcRenderer.removeListener("mdnote:menu-open-folder", listener);
   },
+  onMenuOpenRecentFolder: (callback: (folderPath: string) => void): (() => void) => {
+    const listener = (_event: unknown, folderPath: string) => callback(folderPath);
+    ipcRenderer.on("mdnote:menu-open-recent-folder", listener);
+    return () => ipcRenderer.removeListener("mdnote:menu-open-recent-folder", listener);
+  },
   onMenuNewNote: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("mdnote:menu-new-note", listener);

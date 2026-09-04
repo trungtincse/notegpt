@@ -1,7 +1,10 @@
 import { dirname, join } from "node:path";
-import { app, BrowserWindow, Menu } from "electron";
+import { promises as fs } from "node:fs";
+import { app, BrowserWindow, dialog, Menu } from "electron";
 import { registerExportHandlers } from "./ipc/exportPdf.js";
 import { registerFileHandlers } from "./ipc/fileHandlers.js";
+import { addRecentFolder, clearRecentFolders, getRecentFolders, removeRecentFolder } from "./ipc/recentFolders.js";
+import { setLastFolder } from "./ipc/settings.js";
 import { screen } from "electron";
 // Registers mdnote-media:'s privileges as a side effect of import — must happen before
 // app.whenReady() (see registerSchemesAsPrivileged's own requirement), whereas
@@ -119,12 +122,64 @@ function createMainWindow(): void {
   });
 }
 
-function buildMenu(): void {
+// Opens a folder chosen from the "Open Recent" submenu below. Unlike pickFolder (a fresh
+// dialog.showOpenDialog pick), this path replays a remembered path that may since have been
+// moved or deleted, so it's checked on disk first instead of trusting the stored entry.
+async function openRecentFolder(folderPath: string): Promise<void> {
+  const exists = await fs
+    .access(folderPath)
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    await removeRecentFolder(folderPath);
+    void buildMenu();
+    dialog.showErrorBox("Folder Not Found", `"${folderPath}" no longer exists.`);
+    return;
+  }
+  await setLastFolder(folderPath);
+  await addRecentFolder(folderPath);
+  void buildMenu();
+  mainWindow?.webContents.send("mdnote:menu-open-recent-folder", folderPath);
+}
+
+async function buildMenu(): Promise<void> {
+  const recentFolders = await getRecentFolders();
+  const openRecentSubmenu: Electron.MenuItemConstructorOptions[] =
+    recentFolders.length > 0
+      ? [
+          ...recentFolders.map(
+            // Each entry is its own submenu (rather than a single click target) so a stale or
+            // unwanted path can be dropped one at a time via "Remove from Recent", without
+            // wiping the whole list the way "Clear Recently Opened" below does.
+            (folderPath): Electron.MenuItemConstructorOptions => ({
+              label: folderPath,
+              submenu: [
+                { label: "Open", click: () => void openRecentFolder(folderPath) },
+                {
+                  label: "Remove from Recent",
+                  click: () => {
+                    void removeRecentFolder(folderPath).then(() => buildMenu());
+                  },
+                },
+              ],
+            })
+          ),
+          { type: "separator" },
+          {
+            label: "Clear Recently Opened",
+            click: () => {
+              void clearRecentFolders().then(() => buildMenu());
+            },
+          },
+        ]
+      : [{ label: "No Recent Folders", enabled: false }];
+
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: "File",
       submenu: [
         { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: () => mainWindow?.webContents.send("mdnote:menu-open-folder") },
+        { label: "Open Recent", submenu: openRecentSubmenu },
         { label: "New Note", accelerator: "CmdOrCtrl+N", click: () => mainWindow?.webContents.send("mdnote:menu-new-note") },
         { type: "separator" },
         { role: "quit" },
@@ -155,9 +210,13 @@ app.whenReady().then(async () => {
   }
 
   registerMediaProtocolHandler();
-  registerFileHandlers(() => mainWindow, (filePath) => createWindow(filePath));
+  registerFileHandlers(
+    () => mainWindow,
+    (filePath) => createWindow(filePath),
+    () => void buildMenu()
+  );
   registerExportHandlers(() => mainWindow, { isDev, preloadPath, rendererDevUrl, rendererIndexPath });
-  buildMenu();
+  await buildMenu();
   createMainWindow();
 
   app.on("activate", () => {

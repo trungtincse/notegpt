@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { getPinnedFiles, removePinnedFile, renamePinnedFile, togglePinnedFile } from "./pinnedNotes.js";
 import { addRecentFile, getRecentFiles, removeRecentFile, renameRecentFile } from "./recentFiles.js";
+import { addRecentFolder } from "./recentFolders.js";
 import { getHasSeenWelcome, getLastFolder, markWelcomeSeen, setLastFolder } from "./settings.js";
 
 const MDNOTE_EXT = ".mdnote";
@@ -67,7 +68,11 @@ async function uniqueFilePath(folderPath: string, title: string, excludePath?: s
   return candidate;
 }
 
-export function registerFileHandlers(getWindow: () => BrowserWindow | null, openNoteInNewWindow: (filePath: string) => void): void {
+export function registerFileHandlers(
+  getWindow: () => BrowserWindow | null,
+  openNoteInNewWindow: (filePath: string) => void,
+  onFolderOpened: () => void
+): void {
   ipcMain.handle("mdnote:pickFolder", async () => {
     const win = getWindow();
     if (!win) return null;
@@ -75,6 +80,8 @@ export function registerFileHandlers(getWindow: () => BrowserWindow | null, open
     if (result.canceled || result.filePaths.length === 0) return null;
     const folderPath = result.filePaths[0];
     await setLastFolder(folderPath);
+    await addRecentFolder(folderPath);
+    onFolderOpened();
     return folderPath;
   });
 

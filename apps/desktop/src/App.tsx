@@ -267,10 +267,16 @@ export function App() {
 
   useEffect(() => {
     const offOpenFolder = window.mdnote.onMenuOpenFolder(() => void handleOpenFolder());
+    const offOpenRecentFolder = window.mdnote.onMenuOpenRecentFolder((folderPath) => {
+      setFolderPath(folderPath);
+      setSelectedFilePath(null);
+      setShowingWelcome(false);
+    });
     const offNewNote = window.mdnote.onMenuNewNote(() => void handleNewNote());
     const offShowGuideline = window.mdnote.onMenuShowGuideline(() => void handleShowGuideline());
     return () => {
       offOpenFolder();
+      offOpenRecentFolder();
       offNewNote();
       offShowGuideline();
     };
