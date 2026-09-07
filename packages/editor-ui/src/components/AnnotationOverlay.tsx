@@ -462,6 +462,7 @@ export function AnnotationOverlay({
 }: AnnotationOverlayProps) {
   const internalApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const apiRef = externalApiRef ?? internalApiRef;
+  const overlayRootRef = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onReadyRef = useRef(onReady);
@@ -766,6 +767,35 @@ export function AnnotationOverlay({
     }
   }, [apiRef, markdownBlocks]);
 
+  // Excalidraw scopes its own keyboard shortcuts (Ctrl+F included) to its own container element
+  // — it listens there (a plain `tabIndex={0}` div, internally `excalidrawContainerRef`), not on
+  // `document`/`window` — so they only fire once DOM focus is actually inside it. The App's own
+  // `focusContainer()` does exactly this (`excalidrawContainerRef.current?.focus()`), but it's
+  // only exposed on the internal `AppClassProperties` type, not the public `ExcalidrawImperative-
+  // API` this component actually gets back — so it's replicated here via the DOM instead.
+  //
+  // Retries across frames instead of a single attempt: `.focus()` on an element that either
+  // doesn't exist yet, or exists but sits inside a `visibility: hidden` ancestor, is a silent
+  // HTML-spec no-op — and both are real possibilities right when a note first opens. Excalidraw
+  // can still be showing its own internal "Loading scene…" placeholder in place of the real
+  // `.excalidraw` container for a while (see the onReady doc comment above — up to ~1s, worse
+  // under dev-mode load), and this component's own root is `visibility: hidden` until its camera
+  // finishes centering (see isPositioned) — which itself can be true "for free" on mount (a note
+  // with no prior camera position to restore, or zero blocks) with no correlation at all to
+  // whether Excalidraw's own placeholder has actually cleared yet. Confirming success via
+  // `document.activeElement` (not just "the element exists") is what actually detects both cases.
+  const focusExcalidrawContainer = useCallback(() => {
+    let attempts = 0;
+    const tryFocus = () => {
+      const container = overlayRootRef.current?.querySelector<HTMLElement>(".excalidraw");
+      container?.focus();
+      if (container && document.activeElement === container) return;
+      attempts += 1;
+      if (attempts < 180) requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
+  }, []);
+
   const excalidrawAPI = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
@@ -783,6 +813,14 @@ export function AnnotationOverlay({
     },
     [apiRef, markReadyAndMaybeCenter]
   );
+
+  // Focuses the canvas on mount, and again on every Annotation<->View toggle (clicking that tab
+  // button leaves DOM focus on the button itself, not the canvas) — so Ctrl+F works without the
+  // user clicking the canvas first. See focusExcalidrawContainer's own doc comment for why it
+  // needs to retry rather than assume a single attempt right here lands.
+  useEffect(() => {
+    focusExcalidrawContainer();
+  }, [viewMode, focusExcalidrawContainer]);
 
   const goBackCamera = useCallback(() => {
     const api = apiRef.current;
@@ -805,7 +843,6 @@ export function AnnotationOverlay({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goBackCamera]);
 
-  const overlayRootRef = useRef<HTMLDivElement>(null);
   // Excalidraw's own Ctrl+F "Find on canvas" (SearchMenu) has no public prop/callback for its
   // query text or open/closed state (confirmed against its exported types — only an internal
   // jotai atom for which result is focused) — so the live query is read straight off its search
