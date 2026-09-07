@@ -103,16 +103,26 @@ function MarkdownEmbeddable({
   elementId,
   markdown,
   onHeightChange,
+  subscribeSearchQuery,
 }: {
   elementId: string;
   markdown: string;
   onHeightChange: (elementId: string, height: number) => void;
+  /** Registers a listener for the live Excalidraw search query and returns an unsubscribe —
+   * see AnnotationOverlay's own subscribeSearchQuery for why this is a subscription rather
+   * than a plain prop: piping the query through AnnotationOverlay's own React state forced
+   * *every* markdown card (and the whole `<Excalidraw>` tree) to re-render on every keystroke,
+   * which was heavy enough to make typing into the search box itself feel unresponsive. This
+   * way only the one card whose content actually needs re-highlighting re-renders. */
+  subscribeSearchQuery: (listener: (query: string) => void) => () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const onHeightChangeRef = useRef(onHeightChange);
   onHeightChangeRef.current = onHeightChange;
   const elementIdRef = useRef(elementId);
   elementIdRef.current = elementId;
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => subscribeSearchQuery(setSearchQuery), [subscribeSearchQuery]);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -129,7 +139,7 @@ function MarkdownEmbeddable({
 
   return (
     <div ref={containerRef} style={{ width: MARKDOWN_TEXT_COLUMN_WIDTH }}>
-      <MarkdownPreview markdown={markdown} />
+      <MarkdownPreview markdown={markdown} searchQuery={searchQuery} />
     </div>
   );
 }
@@ -795,8 +805,62 @@ export function AnnotationOverlay({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goBackCamera]);
 
+  const overlayRootRef = useRef<HTMLDivElement>(null);
+  // Excalidraw's own Ctrl+F "Find on canvas" (SearchMenu) has no public prop/callback for its
+  // query text or open/closed state (confirmed against its exported types — only an internal
+  // jotai atom for which result is focused) — so the live query is read straight off its search
+  // input's DOM value instead, to drive the *visible* <mark> highlight MarkdownPreview draws
+  // (see its own doc comment for why Excalidraw's native highlight can't be relied on for that).
+  // Works the same in both Annotation and View mode, unlike the onChange-based appState.search-
+  // Matches (only wired up outside viewMode, see the <Excalidraw onChange> prop below).
+  //
+  // Deliberately NOT plain React state on this component: that would re-render AnnotationOverlay
+  // (and so the whole `<Excalidraw>` tree, including a fresh `renderEmbeddable` closure) on
+  // every single keystroke, which was heavy enough to make typing into Excalidraw's own search
+  // box itself feel broken. Each MarkdownEmbeddable instead subscribes directly (see
+  // subscribeSearchQuery below) and re-renders only itself when the query it's actually shown
+  // changes — the query value is pushed to subscribers, debounced, from outside React's tree.
+  const searchQueryRef = useRef("");
+  const searchListenersRef = useRef(new Set<(query: string) => void>());
+  const notifySearchListeners = useRef(
+    debounce((query: string) => {
+      for (const listener of searchListenersRef.current) listener(query);
+    }, 150)
+  ).current;
+  const subscribeSearchQuery = useCallback((listener: (query: string) => void) => {
+    listener(searchQueryRef.current);
+    searchListenersRef.current.add(listener);
+    return () => {
+      searchListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = overlayRootRef.current;
+    if (!root) return;
+    const sync = () => {
+      const input = root.querySelector<HTMLInputElement>(".layer-ui__search-header input");
+      const next = input?.value ?? "";
+      if (searchQueryRef.current === next) return;
+      searchQueryRef.current = next;
+      notifySearchListeners(next);
+    };
+    sync();
+    // Covers every way the query can change without a bubbling `input` event reaching us: the
+    // search header being mounted (Ctrl+F pressed) or unmounted (closed via Esc/the X button,
+    // clearing the query back to "").
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { childList: true, subtree: true });
+    root.addEventListener("input", sync);
+    return () => {
+      observer.disconnect();
+      root.removeEventListener("input", sync);
+    };
+  }, [notifySearchListeners]);
+
   return (
     <div
+      ref={overlayRootRef}
       className="notegpt-annotation-overlay"
       style={{ visibility: isPositioned ? "visible" : "hidden" }}
       onPointerMove={(event) => {
@@ -816,6 +880,7 @@ export function AnnotationOverlay({
                 elementId={element.id}
                 markdown={markdownById.get(blockId) ?? ""}
                 onHeightChange={handleHeightChange}
+                subscribeSearchQuery={subscribeSearchQuery}
               />
             );
           }

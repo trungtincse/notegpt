@@ -1021,6 +1021,13 @@ body {
   overflow-wrap: break-word;
 }
 
+.notegpt-markdown-preview mark {
+  background: #ffe066;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .notegpt-markdown-preview h1,
 .notegpt-markdown-preview h2,
 .notegpt-markdown-preview h3 {
