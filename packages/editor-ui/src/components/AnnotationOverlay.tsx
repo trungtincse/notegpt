@@ -1,4 +1,4 @@
-import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, convertToExcalidrawElements, restoreElements, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, FONT_FAMILY, Footer, convertToExcalidrawElements, restoreElements, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -25,8 +25,10 @@ import {
   type MarkdownBlock,
   type MediaKind,
 } from "@notegpt/core";
+import { Home } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import { debounce } from "../utils/debounce.js";
+import { dispatchToExcalidraw } from "../utils/dispatchToExcalidraw.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import { DEFAULT_STROKE_COLOR, MIN_STROKE_WIDTH, PASTED_TEXT_COLOR } from "./Toolbar.js";
 
@@ -1045,7 +1047,31 @@ export function AnnotationOverlay({
           files: scene.files as BinaryFiles,
         }}
         onChange={viewMode ? undefined : handleExcalidrawChange}
-      />
+      >
+        {/* Excalidraw's own footer row (zoom controls, kept visible — see styles.css) lays its
+            children out left-aligned, so a child rendered through this exported `Footer` slot
+            lands immediately after them — the standard, documented way to add custom footer UI
+            without reaching into Excalidraw's internal chrome. Styled by hand in styles.css
+            (notegpt-zoom-to-fit) rather than reusing Excalidraw's own `.zoom-actions`/
+            `.zoom-button` classes — tried that first, but those only set background/radius,
+            leaving a plain `<button>`'s default browser border showing (the native zoom trio
+            never shows it since three flush, border-radius:0 segments hide each other's edges,
+            which doesn't apply to a single standalone button). Its CSS variables (--island-bg-
+            color, --border-radius-lg, ...) are reused directly instead, for the same look
+            without that side effect. */}
+        <Footer>
+          <div className="notegpt-zoom-to-fit">
+            <button
+              type="button"
+              title="Shift+1 - Zoom to fit"
+              aria-label="Zoom to fit"
+              onClick={() => dispatchToExcalidraw("1", { code: "Digit1", shiftKey: true })}
+            >
+              <Home size={16} />
+            </button>
+          </div>
+        </Footer>
+      </Excalidraw>
     </div>
   );
 }

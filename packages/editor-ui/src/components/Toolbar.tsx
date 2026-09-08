@@ -7,7 +7,6 @@ import {
   Eraser,
   Hand,
   Highlighter as HighlighterIcon,
-  Home,
   Image as ImageIcon,
   LassoSelect,
   Link as LinkIcon,
@@ -18,6 +17,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { dispatchToExcalidraw } from "../utils/dispatchToExcalidraw.js";
 
 export interface ToolbarProps {
   excalidrawApiRef: RefObject<ExcalidrawImperativeAPI | null>;
@@ -58,17 +58,6 @@ const DRAW_TOOLS: ReadonlyArray<{ type: ToolType; label: string; Icon: LucideIco
   { type: "text", label: "F5 - Text", Icon: TextIcon },
   { type: "image", label: "F6 - Image", Icon: ImageIcon },
 ];
-
-/** Excalidraw's imperative API has no undo/delete methods, only `history.clear()`
- * (wipes history) and `resetScene()` (wipes the canvas) — neither is "undo one
- * step" or "delete selection". Its keyboard shortcuts do both, so we dispatch
- * synthetic key events at its container to trigger the same internal handlers. */
-function dispatchToExcalidraw(key: string, options: KeyboardEventInit = {}) {
-  const container = document.querySelector<HTMLElement>(".notegpt-annotation-overlay .excalidraw");
-  if (!container) return;
-  container.focus();
-  container.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options }));
-}
 
 /** Mirrors EditorShell's own positional "Card N" fallback (see startRename) so a card link's
  * label stays consistent with what its tab shows, even before the card is given a real title. */
@@ -369,14 +358,6 @@ export function Toolbar({ excalidrawApiRef, onPickNoteLink, markdownBlocks }: To
       </button>
       <button type="button" title="Delete selected" aria-label="Delete selected" onClick={() => dispatchToExcalidraw("Delete")}>
         <Trash2 size={ICON_SIZE} />
-      </button>
-      <button
-        type="button"
-        title="Shift+1 - Zoom to fit"
-        aria-label="Zoom to fit"
-        onClick={() => dispatchToExcalidraw("1", { code: "Digit1", shiftKey: true })}
-      >
-        <Home size={ICON_SIZE} />
       </button>
     </div>
   );

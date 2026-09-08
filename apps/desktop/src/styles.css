@@ -901,6 +901,36 @@ body {
   display: none;
 }
 
+/* The "Zoom to fit" button AnnotationOverlay renders via Excalidraw's own `Footer` slot (see
+   its own comment) sits right after the native zoom-out/percentage/zoom-in trio in the same
+   footer row. Styled from scratch with Excalidraw's own CSS variables (not its `.zoom-actions`/
+   `.zoom-button` classes — tried that first, but a lone button doesn't hide its own default
+   browser border the way three flush, border-radius:0 segments hide each other's), so it reads
+   as one more rounded icon button matching the native island's fill/radius, just ungrouped. */
+.notegpt-annotation-overlay .excalidraw .notegpt-zoom-to-fit {
+  margin-left: 8px;
+}
+
+.notegpt-annotation-overlay .excalidraw .notegpt-zoom-to-fit button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--lg-button-size);
+  height: var(--lg-button-size);
+  border: none;
+  border-radius: var(--border-radius-lg);
+  /* The native zoom pill's visible fill is this token, not --island-bg-color (that one's the
+     *wrapper's* background — white/near-white in both themes, invisible against the page here,
+     which read as "no background" once this button had nothing else giving it a border). */
+  background-color: var(--color-surface-low);
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.notegpt-annotation-overlay .excalidraw .notegpt-zoom-to-fit button:hover {
+  background-color: var(--button-hover-bg, var(--color-surface-low));
+}
+
 /* Excalidraw shows its own "Welcome Screen" chrome (logo/heading plus hint
    arrows pointing at where its menu/toolbar/help button would be) whenever a
    note's annotation scene has zero elements — it's a separate overlay from
